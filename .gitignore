@@ -38,9 +38,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# data
+# local DB and uploads (do not commit)
 data/
-drizzle/
+
+# drizzle migrations are tracked so D1 can apply them in CI/deploy
 
 # IDE
 .vscode/
@@ -48,3 +49,14 @@ drizzle/
 
 # docs
 *.docx
+
+# cloudflare
+.open-next/
+.wrangler/
+.dev.vars
+cloudflare-env.d.ts
+
+# stray dev server logs
+server.log
+server.err
+

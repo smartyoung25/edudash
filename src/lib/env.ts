@@ -1,30 +1,32 @@
+// In Workers (OpenNext), Cloudflare vars/secrets are copied onto process.env at
+// request-time. In local node (next dev / CLI scripts), process.env comes from .env / .dev.vars.
+// Getters defer reads to call-time so the right value is used in each environment.
+function read(name: string, fallback = ""): string {
+  return process.env[name] ?? fallback;
+}
+
 export const env = {
-  SESSION_PASSWORD: process.env.SESSION_PASSWORD ?? "",
-  GOOGLE_SERVICE_ACCOUNT_JSON_PATH: process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH ?? "",
-  GOOGLE_DELEGATED_USER: process.env.GOOGLE_DELEGATED_USER ?? "",
-  DAILY_SHEETS_SPREADSHEET_ID: process.env.DAILY_SHEETS_SPREADSHEET_ID ?? "",
-  EXPENSE_SHEETS_SPREADSHEET_ID: process.env.EXPENSE_SHEETS_SPREADSHEET_ID ?? "",
-  DRIVE_ROOT_FOLDER_ID: process.env.DRIVE_ROOT_FOLDER_ID ?? "",
-  IMAP_HOST: process.env.IMAP_HOST ?? "imap.gmail.com",
-  IMAP_PORT: Number(process.env.IMAP_PORT ?? "993"),
-  IMAP_USER: process.env.IMAP_USER ?? "",
-  IMAP_PASSWORD: process.env.IMAP_PASSWORD ?? "",
-  GOOGLE_VISION_KEY_PATH: process.env.GOOGLE_VISION_KEY_PATH ?? "",
-  ENABLE_SCHEDULER: process.env.ENABLE_SCHEDULER === "true",
+  get SESSION_PASSWORD() { return read("SESSION_PASSWORD"); },
+  get GOOGLE_SERVICE_ACCOUNT_JSON() { return read("GOOGLE_SERVICE_ACCOUNT_JSON"); },
+  get GOOGLE_DELEGATED_USER() { return read("GOOGLE_DELEGATED_USER"); },
+  get DAILY_SHEETS_SPREADSHEET_ID() { return read("DAILY_SHEETS_SPREADSHEET_ID"); },
+  get EXPENSE_SHEETS_SPREADSHEET_ID() { return read("EXPENSE_SHEETS_SPREADSHEET_ID"); },
+  get DRIVE_ROOT_FOLDER_ID() { return read("DRIVE_ROOT_FOLDER_ID"); },
+  get GMAIL_USER() { return read("GMAIL_USER"); },
 };
 
 export function isSheetsEnabled() {
-  return !!env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH && !!env.DAILY_SHEETS_SPREADSHEET_ID;
+  return !!env.GOOGLE_SERVICE_ACCOUNT_JSON && !!env.DAILY_SHEETS_SPREADSHEET_ID;
 }
 
 export function isDriveEnabled() {
-  return !!env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH && !!env.DRIVE_ROOT_FOLDER_ID;
+  return !!env.GOOGLE_SERVICE_ACCOUNT_JSON && !!env.DRIVE_ROOT_FOLDER_ID;
 }
 
 export function isMailEnabled() {
-  return !!env.IMAP_HOST && !!env.IMAP_USER && !!env.IMAP_PASSWORD;
+  return !!env.GOOGLE_SERVICE_ACCOUNT_JSON && !!env.GMAIL_USER;
 }
 
 export function isOcrEnabled() {
-  return !!env.GOOGLE_VISION_KEY_PATH;
+  return false;
 }

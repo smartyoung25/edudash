@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
 import { db, schema } from "@/db/client";
 import { requireRole } from "@/lib/auth";
 import { generateWeeklyReport } from "@/lib/reports";
@@ -11,17 +9,11 @@ export async function POST(req: Request) {
   if (!weekStart) return NextResponse.json({ error: "weekStart 필수" }, { status: 400 });
 
   const buf = await generateWeeklyReport(weekStart);
-
-  // 저장
-  const dir = path.join(process.cwd(), "data", "reports");
-  await fs.mkdir(dir, { recursive: true });
   const fileName = `weekly_${weekStart}.xlsx`;
-  const filePath = path.join(dir, fileName);
-  await fs.writeFile(filePath, buf);
 
   await db.insert(schema.reportHistory).values({
     weekStart,
-    filePath: `data/reports/${fileName}`,
+    filePath: fileName,
     generatedBy: session.userId,
   });
 

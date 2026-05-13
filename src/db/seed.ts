@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { db } from "./client";
+import { db } from "./local-client";
 import {
   users,
   teams,

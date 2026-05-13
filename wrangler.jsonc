@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "edu-dash",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "edu-dash-db",
+      "database_id": "PLACEHOLDER_RUN_wrangler_d1_create",
+      "migrations_dir": "drizzle"
+    }
+  ]
+  // Secrets (set via `wrangler secret put <NAME>`):
+  //   SESSION_PASSWORD
+  //   GOOGLE_SERVICE_ACCOUNT_JSON   (the entire JSON content as a single string)
+  //   GOOGLE_DELEGATED_USER
+  //   DAILY_SHEETS_SPREADSHEET_ID
+  //   EXPENSE_SHEETS_SPREADSHEET_ID
+  //   DRIVE_ROOT_FOLDER_ID
+  //   GMAIL_USER                    (mailbox to poll, e.g. stepup2@iiam.co.kr)
+}
