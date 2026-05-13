@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; npm install --no-audit --no-fund 2>&1 | Select-Object -Last 50)",
+      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" install --no-audit --no-fund 2>&1)",
+      "Bash(curl -s -o /tmp/login.html -w \"HTTP %{http_code} | %{size_download} bytes\\\\n\" http://localhost:3000/login)",
+      "Read(//tmp/**)",
+      "Bash(iconv -f utf-8 -t utf-8)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/login\" -UseBasicParsing -TimeoutSec 30; \"HTTP \" + $r.StatusCode + \" | \" + $r.RawContentLength + \" bytes\"; $r.Content.Substring\\(0, [Math]::Min\\(500, $r.Content.Length\\)\\) } catch { \"ERROR: \" + $_.Exception.Message })",
+      "Bash(curl --max-time 60 -s -o /tmp/login.html -w \"HTTP %{http_code} | %{size_download} bytes | %{time_total}s\\\\n\" http://localhost:3000/login)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Format-Table -AutoSize; \"---\"; Get-Process | Where-Object { $_.ProcessName -match \"node\" } | Select-Object Id, ProcessName, StartTime | Format-Table -AutoSize)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000\" -TimeoutSec 30 -UseBasicParsing; Write-Host \"Status: $\\($r.StatusCode\\)\"; $r.Content.Substring\\(0, [Math]::Min\\(500, $r.Content.Length\\)\\) } catch { Write-Host \"Error: $_\" })"
+    ]
+  }
+}
