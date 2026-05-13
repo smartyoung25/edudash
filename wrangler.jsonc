@@ -15,7 +15,7 @@
     {
       "binding": "DB",
       "database_name": "edu-dash-db",
-      "database_id": "PLACEHOLDER_RUN_wrangler_d1_create",
+      "database_id": "dd725d34-2856-4738-8d2e-131a8554e1be",
       "migrations_dir": "drizzle"
     }
   ]
