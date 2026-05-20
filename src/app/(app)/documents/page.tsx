@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage() {
   const user = await getCurrentUser();
-  const role = (user?.role ?? "funder") as Role;
+  const role = (user?.role ?? "professor") as Role;
   const teams = await db.select().from(schema.teams);
   const docs = await db.select().from(schema.documents);
   const status = await db.select().from(schema.integrationStatus).where(eq(schema.integrationStatus.type, "mail"));

@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DailyPage() {
   const user = await getCurrentUser();
-  const role = (user?.role ?? "funder") as Role;
+  const role = (user?.role ?? "professor") as Role;
   const reports = await db.select().from(schema.dailyReports).orderBy(desc(schema.dailyReports.reportDate)).limit(50);
   const teams = await db.select().from(schema.teams);
   const teamMap = new Map(teams.map((t) => [t.id, t]));

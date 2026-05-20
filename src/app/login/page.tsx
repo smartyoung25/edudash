@@ -18,7 +18,6 @@ export default function LoginPage() {
               <li><code>admin</code> — 관리자(이암허브)</li>
               <li><code>coord1</code> — 코디네이터</li>
               <li><code>prof1</code> — 주임교수</li>
-              <li><code>funder</code> — 발주기관(농정원)</li>
             </ul>
           </div>
         </CardContent>

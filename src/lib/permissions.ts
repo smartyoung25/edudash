@@ -1,6 +1,6 @@
 // 기획서 5장 권한 매트릭스
 
-export type Role = "admin" | "coordinator" | "professor" | "funder";
+export type Role = "admin" | "coordinator" | "professor";
 
 export type ModuleKey = "dashboard" | "daily" | "kpi" | "documents" | "reports" | "contacts" | "settings";
 
@@ -8,7 +8,6 @@ export const ROLE_LABEL: Record<Role, string> = {
   admin: "관리자",
   coordinator: "코디네이터",
   professor: "주임교수",
-  funder: "발주기관",
 };
 
 // 모듈별 사이드바 표시 여부
@@ -16,7 +15,6 @@ export const MENU_ACCESS: Record<Role, ModuleKey[]> = {
   admin:       ["dashboard", "daily", "kpi", "documents", "reports", "contacts", "settings"],
   coordinator: ["dashboard", "daily", "kpi", "documents"],
   professor:   ["dashboard", "daily", "kpi", "documents"],
-  funder:      ["dashboard", "daily", "kpi", "reports"],
 };
 
 export function canAccess(role: Role, module: ModuleKey): boolean {
@@ -38,7 +36,7 @@ export function canResolveUnclassified(role: Role): boolean {
 }
 
 export function canDownloadReport(role: Role): boolean {
-  return role === "admin" || role === "funder";
+  return role === "admin" || role === "coordinator";
 }
 
 export function canGenerateReport(role: Role): boolean {

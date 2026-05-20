@@ -19,7 +19,7 @@ function getMonday(d: Date) {
 
 export default async function ReportsPage() {
   const user = await getCurrentUser();
-  const role = (user?.role ?? "funder") as Role;
+  const role = (user?.role ?? "professor") as Role;
   const history = await db.select().from(schema.reportHistory).orderBy(desc(schema.reportHistory.generatedAt)).limit(20);
   const thisMonday = getMonday(new Date()).toISOString().slice(0, 10);
 
@@ -27,7 +27,7 @@ export default async function ReportsPage() {
     <div>
       <PageHeader
         title="주간보고"
-        description="발주기관(농정원) 제출용 운영현황 엑셀을 자동 생성합니다"
+        description="주간 운영현황 엑셀을 자동 생성합니다"
       />
       <div className="p-6 space-y-6">
         {role === "admin" && (

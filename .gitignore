@@ -60,3 +60,12 @@ cloudflare-env.d.ts
 server.log
 server.err
 
+
+# 개발 도구
+make_arch_ppt.js
+ppt_server.js
+view_pptx.html
+architecture.pptx
+cloudflared.exe
+*.err
+*.log

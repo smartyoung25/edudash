@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@libsql/client", "imapflow", "mailparser"],
+  serverExternalPackages: ["@libsql/client", "imapflow", "mailparser", "node-cron"],
   experimental: {
     serverActions: { bodySizeLimit: "25mb" },
   },

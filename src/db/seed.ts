@@ -229,7 +229,6 @@ async function main() {
   await db.insert(users).values({ email: "admin",   passwordHash, name: "관리자(이암허브)", role: "admin" });
   await db.insert(users).values({ email: "coord1",  passwordHash, name: "코디네이터1",       role: "coordinator", teamId: insertedTeams[0].id });
   await db.insert(users).values({ email: "prof1",   passwordHash, name: "주임교수1",         role: "professor",   teamId: insertedTeams[0].id });
-  await db.insert(users).values({ email: "funder",  passwordHash, name: "발주기관(농정원)", role: "funder" });
 
   // ── 연락망
   console.log("Inserting contacts...");
@@ -286,7 +285,6 @@ async function main() {
   console.log("  admin  / 1234   (관리자)");
   console.log("  coord1 / 1234   (코디네이터)");
   console.log("  prof1  / 1234   (주임교수)");
-  console.log("  funder / 1234   (발주기관)");
   process.exit(0);
 }
 
