@@ -36,7 +36,7 @@ export interface MemberKpiSummary {
   memberId: number;
   name: string;
   averagePercent: number;
-  perKpi: { kpiName: string; targetValue: number; latest: number; percent: number; checkpointsDone: number }[];
+  perKpi: { kpiDefId: number; kpiName: string; targetValue: number; latest: number; percent: number; checkpointsDone: number }[];
 }
 
 export async function getMemberKpiSummary(memberId: number, memberName: string): Promise<MemberKpiSummary> {
@@ -57,6 +57,7 @@ export async function getMemberKpiSummary(memberId: number, memberName: string):
     const percent = Math.min(100, Math.round((latest / r.def.targetValue) * 100));
     totalPercent += percent;
     perKpi.push({
+      kpiDefId: r.def.id,
       kpiName: r.def.name,
       targetValue: r.def.targetValue,
       latest,

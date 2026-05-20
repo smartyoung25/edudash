@@ -189,7 +189,8 @@ export async function syncPublicSheet(spreadsheetId: string): Promise<SheetSyncR
 
   // ExcelJS 파싱
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await wb.xlsx.load(buffer as any);
 
   // DB 팀 목록 조회
   const dbTeams = await db

@@ -60,6 +60,24 @@ cloudflare-env.d.ts
 server.log
 server.err
 
+# vercel
+.vercel/
+
+# Claude Code 로컬 설정 (개인 IDE)
+.claude/settings.local.json
+.claude/launch.json
+
+# 로컬 SQLite 잔여물·임시 출력
+auth
+auth-wal
+excel_err.txt
+excel_out.txt
+*.tmp.txt
+
+# 분석/사전조사용 보조 스크립트(배포 산출물 아님)
+study plan/
+프로젝트안내서.md
+
 
 # 개발 도구
 make_arch_ppt.js

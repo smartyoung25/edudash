@@ -33,6 +33,9 @@ export const members = sqliteTable("members", {
   teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   gender: text("gender", { enum: ["M", "F"] }),
+  learnerType: text("learner_type"), // 청년농 | 농업인
+  birthDate: text("birth_date"),     // YYYY-MM-DD
+  eduStatus: text("edu_status"),     // 교육중 | 교육취소
 });
 
 // ───────── 차시 / 출석 ─────────
@@ -175,6 +178,32 @@ export const reportHistory = sqliteTable("report_history", {
   generatedAt: text("generated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// ───────── 로그인 시도 (브루트포스 방어, Vercel 다중 인스턴스 대응) ─────────
+
+export const loginAttempts = sqliteTable("login_attempts", {
+  // key = `${ip}:${emailLower}` 또는 `email:${emailLower}` (IP 무관 카운터)
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(0),
+  lockedUntil: integer("locked_until").notNull().default(0), // epoch ms
+  lastAttemptAt: integer("last_attempt_at").notNull().default(0),
+});
+
+// ───────── 보안 감사 로그 ─────────
+
+export const auditLogs = sqliteTable("audit_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id"),
+  userEmail: text("user_email"),
+  action: text("action").notNull(), // LOGIN_SUCCESS | LOGIN_FAIL | LOGIN_LOCKED |
+                                     // KPI_UPDATE | DAILY_CREATE | DAILY_UPDATE |
+                                     // DOC_UPLOAD | DOC_RESOLVE | REPORT_GENERATE
+  targetType: text("target_type"),   // "member" | "team" | "document" | "session"
+  targetId: integer("target_id"),
+  detail: text("detail"),            // JSON 상세 (변경 전후 값 등)
+  ipAddress: text("ip_address"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Member = typeof members.$inferSelect;
@@ -184,3 +213,4 @@ export type Document = typeof documents.$inferSelect;
 export type Contact = typeof contacts.$inferSelect;
 export type KpiDef = typeof kpiDefinitions.$inferSelect;
 export type KpiProgress = typeof kpiProgress.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;

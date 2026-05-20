@@ -13,10 +13,16 @@ export interface SessionData {
   teamId?: number | null;
 }
 
+// [C-3] SESSION_PASSWORD 미설정 시 개발 환경 전용 임시 키 사용
+// 운영 환경에서는 login/route.ts 상단에서 서버 시작을 차단함
+const SESSION_PASSWORD =
+  process.env.SESSION_PASSWORD ??
+  (process.env.NODE_ENV !== "production"
+    ? "dev-only-insecure-key-do-not-use-in-production-32ch"
+    : (() => { throw new Error("[보안] SESSION_PASSWORD 환경변수가 필요합니다"); })());
+
 export const sessionOptions: SessionOptions = {
-  password:
-    process.env.SESSION_PASSWORD ||
-    "fallback-development-password-change-me-in-env-local-32chars-min",
+  password: SESSION_PASSWORD,
   cookieName: "growth_edu_session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",

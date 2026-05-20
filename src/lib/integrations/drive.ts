@@ -96,6 +96,84 @@ export async function uploadDocumentToDrive(opts: {
 }
 
 /**
+ * 브라우저가 Drive에 직접 PUT 할 수 있도록 resumable upload session URI 를 생성.
+ * 서비스 계정 자격으로 세션을 열고, 반환된 location URL을 클라이언트에 전달한다.
+ * 클라이언트는 해당 URL에 파일 바이트를 PUT 으로 전송.
+ *
+ * Vercel 함수 body 4.5MB 제한을 우회하기 위한 핵심 흐름.
+ */
+export async function createResumableUploadSession(opts: {
+  teamName: string | null;
+  docType: string;
+  month: number | null;
+  fileName: string;
+  fileSize: number;
+  mimeType?: string;
+}): Promise<{ ok: true; uploadUrl: string; parentFolderId: string } | { ok: false; message: string }> {
+  if (!isDriveEnabled()) {
+    return { ok: false, message: "Drive 자격증명 미설정" };
+  }
+
+  try {
+    let parent = env.DRIVE_ROOT_FOLDER_ID;
+    if (opts.teamName) {
+      parent = await findOrCreateFolder(opts.teamName, parent);
+      parent = await findOrCreateFolder(opts.docType, parent);
+      if (opts.month) {
+        parent = await findOrCreateFolder(`${opts.month}월`, parent);
+      }
+    } else {
+      parent = await findOrCreateFolder("미분류", parent);
+    }
+
+    const { getAccessToken } = await import("./google-auth");
+    const token = await getAccessToken();
+    if (!token) return { ok: false, message: "액세스 토큰 발급 실패" };
+
+    const mimeType = opts.mimeType ?? mimeFromExt(opts.fileName);
+
+    const initRes = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json; charset=UTF-8",
+          "X-Upload-Content-Type": mimeType,
+          "X-Upload-Content-Length": String(opts.fileSize),
+        },
+        body: JSON.stringify({ name: opts.fileName, parents: [parent] }),
+      },
+    );
+
+    if (!initRes.ok) {
+      const text = await initRes.text();
+      return { ok: false, message: `Drive 세션 생성 실패: ${initRes.status} ${text}` };
+    }
+    const location = initRes.headers.get("location");
+    if (!location) return { ok: false, message: "Drive 세션 location 헤더 없음" };
+
+    return { ok: true, uploadUrl: location, parentFolderId: parent };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "알 수 없는 오류" };
+  }
+}
+
+/**
+ * 업로드 완료 후 파일 메타데이터(webViewLink) 조회.
+ */
+export async function getDriveFileMeta(fileId: string): Promise<{ webViewLink?: string; name?: string } | null> {
+  const drive = getDriveClient();
+  if (!drive) return null;
+  try {
+    const res = await drive.files.get({ fileId, fields: "id,name,webViewLink" });
+    return { webViewLink: res.data.webViewLink ?? undefined, name: res.data.name ?? undefined };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Backwards-compatible wrapper for receipt uploads.
  */
 export async function uploadReceipt(opts: {

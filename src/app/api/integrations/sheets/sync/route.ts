@@ -45,7 +45,9 @@ export async function POST() {
   }
 }
 
+// [M-3] 연동 상태 조회도 인증 필수
 export async function GET() {
+  await requireRole(["admin", "coordinator"]);
   const rows = await db
     .select()
     .from(schema.integrationStatus)

@@ -8,6 +8,13 @@
       "when": 1778650628759,
       "tag": "0000_aromatic_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1779271241936,
+      "tag": "0001_giant_chimera",
+      "breakpoints": true
     }
   ]
 }
