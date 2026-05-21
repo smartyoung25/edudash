@@ -23,18 +23,19 @@ export default async function DashboardPage() {
     courseName: t.courseName,
     region: t.region,
     headCount: t.headCount,
-    totalSessions: t.totalSessions,
+    totalSessions: progressMap[t.id]?.effectiveTotal ?? t.totalSessions,
     endDate: t.endDate,
     professorName: t.professorName,
-    currentSession: progressMap[t.id]?.currentSession ?? 0,
+    currentSession: progressMap[t.id]?.done ?? 0,
     progressPercent: progressMap[t.id]?.progressPercent ?? 0,
+    cancelled: progressMap[t.id]?.cancelled ?? 0,
   }));
 
   return (
     <div>
       <PageHeader
         title="대시보드"
-        description="2026 성장농 맞춤형과정 15개 팀의 운영 현황을 한눈에 봅니다"
+        description={`2026 성장농 맞춤형과정 ${teams.length}개 팀의 운영 현황을 한눈에 봅니다`}
       />
       <div className="p-6 space-y-6">
         <div className="grid gap-4 md:grid-cols-3">

@@ -21,6 +21,7 @@ export interface TeamCardData {
   professorName: string;
   currentSession: number;
   progressPercent: number;
+  cancelled?: number;
 }
 
 export function TeamCard({ team }: { team: TeamCardData }) {
@@ -47,7 +48,9 @@ export function TeamCard({ team }: { team: TeamCardData }) {
             </div>
             <Progress value={team.progressPercent} indicatorClassName="bg-emerald-500" />
             <div className="text-xs text-muted-foreground">
-              {team.currentSession}/{team.totalSessions}차시 · 최종 {formatMonthDay(team.endDate)}
+              {team.currentSession}/{team.totalSessions}차시
+              {team.cancelled ? ` · 취소 ${team.cancelled}` : ""}
+              {" · "}최종 {formatMonthDay(team.endDate)}
             </div>
           </div>
 

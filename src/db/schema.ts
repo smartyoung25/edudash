@@ -108,6 +108,7 @@ export const documents = sqliteTable("documents", {
     enum: ["출석부", "코디일지", "경비영수증", "강사비지급확인서", "교육생일지", "미분류"],
   }).notNull(),
   month: integer("month"), // 1~12, null이면 미상
+  sessionNo: integer("session_no"), // 차시 번호. 분류 시 자동 추론 또는 수동 지정
   fileName: text("file_name").notNull(),
   filePath: text("file_path").notNull(),
   source: text("source", { enum: ["mail", "manual"] }).notNull(),
@@ -129,6 +130,13 @@ export const expenseReceipts = sqliteTable("expense_receipts", {
   driveUrl: text("drive_url"),
   status: text("status", { enum: ["auto", "confirmed", "rejected"] }).notNull().default("auto"),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// 팀 별칭 — 메일 본문/제목에 "한우해움" 같이 들어와도 팀7 한우7기로 매칭되게
+export const teamAliases = sqliteTable("team_aliases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  alias: text("alias").notNull().unique(),
 });
 
 // ───────── 연락망 ─────────

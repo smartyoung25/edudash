@@ -3,31 +3,67 @@ import { eq, and, sql } from "drizzle-orm";
 
 export interface TeamProgress {
   teamId: number;
-  total: number;
-  done: number;
-  inProgress: number;
-  planned: number;
-  progressPercent: number;
-  currentSession: number; // 진행중 차시 또는 마지막 완료 차시 + 1
+  total: number;            // PDF 원래 차시 수
+  effectiveTotal: number;   // 미진행(취소) 제외한 유효 차시 수
+  done: number;             // 일일현황 기록 있는 차시 (실제 진행됨)
+  cancelled: number;        // 과거 일자에 기록 없음 = 미진행
+  planned: number;          // 미래 예정 차시 수
+  progressPercent: number;  // done / effectiveTotal
+  currentSession: number;   // 다음 진행할 차시(표시번호) — 끝났으면 effectiveTotal
 }
 
+// 진행률 = 일일현황(daily_reports) 기록 기준
+// 일정 페이지(teams/[id]/schedule)와 동일한 규칙을 사용
 export async function getTeamProgress(teamId: number): Promise<TeamProgress> {
-  const rows = await db.select().from(schema.sessions).where(eq(schema.sessions.teamId, teamId));
-  const total = rows.length;
-  const done = rows.filter((r) => r.status === "done").length;
-  const inProgress = rows.filter((r) => r.status === "in-progress").length;
-  const planned = rows.filter((r) => r.status === "planned").length;
-  const progressPercent = total === 0 ? 0 : Math.round((done / total) * 100);
-  const inProgRow = rows.find((r) => r.status === "in-progress");
-  const currentSession = inProgRow ? inProgRow.sessionNo : Math.min(done + 1, total);
-  return { teamId, total, done, inProgress, planned, progressPercent, currentSession };
+  const [sessions, reports] = await Promise.all([
+    db.select().from(schema.sessions).where(eq(schema.sessions.teamId, teamId)),
+    db.select().from(schema.dailyReports).where(eq(schema.dailyReports.teamId, teamId)),
+  ]);
+  return computeProgress(teamId, sessions, reports);
+}
+
+function computeProgress(
+  teamId: number,
+  sessions: (typeof schema.sessions.$inferSelect)[],
+  reports: (typeof schema.dailyReports.$inferSelect)[],
+): TeamProgress {
+  const today = new Date().toISOString().slice(0, 10);
+  const reportNos = new Set(reports.map((r) => r.sessionNo));
+  let done = 0, cancelled = 0, planned = 0;
+  for (const s of sessions) {
+    if (reportNos.has(s.sessionNo)) done++;
+    else if (s.scheduledDate < today) cancelled++;
+    else planned++;
+  }
+  const total = sessions.length;
+  const effectiveTotal = total - cancelled;
+  const progressPercent = effectiveTotal === 0 ? 0 : Math.round((done / effectiveTotal) * 100);
+  const currentSession = Math.min(done + 1, effectiveTotal === 0 ? 1 : effectiveTotal);
+  return { teamId, total, effectiveTotal, done, cancelled, planned, progressPercent, currentSession };
 }
 
 export async function getAllTeamProgress(): Promise<Record<number, TeamProgress>> {
-  const teams = await db.select().from(schema.teams);
+  // 한 쿼리로 전체 데이터를 가져와 in-memory 계산 (N+1 회피)
+  const [teams, allSessions, allReports] = await Promise.all([
+    db.select().from(schema.teams),
+    db.select().from(schema.sessions),
+    db.select().from(schema.dailyReports),
+  ]);
+  const sessionsByTeam = new Map<number, (typeof allSessions[number])[]>();
+  for (const s of allSessions) {
+    const arr = sessionsByTeam.get(s.teamId) ?? [];
+    arr.push(s);
+    sessionsByTeam.set(s.teamId, arr);
+  }
+  const reportsByTeam = new Map<number, (typeof allReports[number])[]>();
+  for (const r of allReports) {
+    const arr = reportsByTeam.get(r.teamId) ?? [];
+    arr.push(r);
+    reportsByTeam.set(r.teamId, arr);
+  }
   const result: Record<number, TeamProgress> = {};
   for (const t of teams) {
-    result[t.id] = await getTeamProgress(t.id);
+    result[t.id] = computeProgress(t.id, sessionsByTeam.get(t.id) ?? [], reportsByTeam.get(t.id) ?? []);
   }
   return result;
 }

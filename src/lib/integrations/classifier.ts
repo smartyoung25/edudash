@@ -1,40 +1,191 @@
 import { db, schema } from "@/db/client";
+import { eq } from "drizzle-orm";
 
-const KEYWORDS: Record<string, string[]> = {
-  출석부: ["출석", "출석부", "attendance"],
-  코디일지: ["코디일지", "코디", "일지"],
-  경비영수증: ["경비", "영수증", "비용", "expense"],
-  강사비지급확인서: ["강사비", "강사", "지급확인"],
-  교육생일지: ["교육생", "학습일지", "교육생일지"],
+// 더 길고 구체적인 키워드부터 매칭 — "교육생일지"가 "일지"로 잘못 잡히지 않도록
+const DOC_KEYWORDS: Record<string, string[]> = {
+  출석부: ["출석부", "출석", "attendance"],
+  교육생일지: ["교육생일지", "교육생 일지", "학습일지", "학습 일지"],
+  코디일지: ["코디일지", "코디 일지", "코디네이터일지"],
+  강사비지급확인서: ["강사비지급확인서", "강사비 지급확인", "강사비", "강사 수당", "지급확인서"],
+  경비영수증: ["경비영수증", "경비 영수증", "영수증", "경비 정산", "경비"],
 };
 
+// ──────────────── 팀 매칭 ────────────────
+
+// 메모리 캐시 — 같은 sync 실행 내에서 DB 재조회 회피
+let aliasCache: { teamId: number; alias: string }[] | null = null;
+async function loadAliases() {
+  if (aliasCache) return aliasCache;
+  const rows = await db.select().from(schema.teamAliases);
+  // 길이 내림차순 — 긴 별칭("딸기 17기")이 먼저 매칭되어야 짧은 것("딸기")으로 잘못 잡히지 않음
+  aliasCache = rows.sort((a, b) => b.alias.length - a.alias.length);
+  return aliasCache;
+}
+export function resetClassifierCache() {
+  aliasCache = null;
+}
+
+// 본문/제목/파일명에서 가장 먼저 매칭되는 팀 찾기
+export async function classifyTeamByText(...haystacks: string[]): Promise<number | null> {
+  const aliases = await loadAliases();
+  const text = haystacks.filter(Boolean).join(" \n ").toLowerCase();
+  if (!text.trim()) return null;
+  for (const a of aliases) {
+    if (text.includes(a.alias.toLowerCase())) return a.teamId;
+  }
+  return null;
+}
+
+// 보내는 사람 이메일이 코디 user 라면 그 사람의 teamId
 export async function classifyByEmail(fromAddress: string): Promise<number | null> {
-  // 사전 등록된 코디 사용자(role=coordinator) 이메일 매칭
   const users = await db.select().from(schema.users);
   const coord = users.find((u) => u.email === fromAddress || u.email === fromAddress.split("@")[0]);
   if (coord && coord.teamId) return coord.teamId;
   return null;
 }
 
+// 종합 — 보낸이 → 제목/본문/파일명 별칭 순서로 시도
+export async function classifyTeam(opts: {
+  fromAddress: string;
+  subject: string;
+  body?: string;
+  fileName?: string;
+}): Promise<number | null> {
+  const byEmail = await classifyByEmail(opts.fromAddress);
+  if (byEmail) return byEmail;
+  return classifyTeamByText(opts.subject, opts.body ?? "", opts.fileName ?? "");
+}
+
+// ──────────────── 서류 유형 ────────────────
+
+// 모든 키워드를 길이 내림차순으로 평탄화해서 가장 구체적인 매칭이 항상 우선
+const FLAT_DOC_KEYWORDS: { type: string; kw: string }[] = Object.entries(DOC_KEYWORDS)
+  .flatMap(([type, kws]) => kws.map((kw) => ({ type, kw: kw.toLowerCase() })))
+  .sort((a, b) => b.kw.length - a.kw.length);
+
 export function classifyDocType(subject: string, fileName: string): string {
   const haystack = `${subject} ${fileName}`.toLowerCase();
-  for (const [type, keywords] of Object.entries(KEYWORDS)) {
-    for (const kw of keywords) {
-      if (haystack.includes(kw.toLowerCase())) return type;
-    }
+  for (const { type, kw } of FLAT_DOC_KEYWORDS) {
+    if (haystack.includes(kw)) return type;
   }
   return "미분류";
 }
 
-export function detectMonth(subject: string, receivedAt: string): number | null {
-  // 제목에서 "N월" 패턴 우선
-  const m = subject.match(/(\d{1,2})월/);
+// ──────────────── 월 ────────────────
+
+export function detectMonth(subject: string, receivedAt: string, body?: string, fileName?: string): number | null {
+  const hay = `${subject} ${body ?? ""} ${fileName ?? ""}`;
+  const m = hay.match(/(\d{1,2})\s*월/);
   if (m) {
     const month = Number(m[1]);
     if (month >= 1 && month <= 12) return month;
   }
-  // 폴백: 수신일자
   const d = new Date(receivedAt);
   if (isNaN(d.getTime())) return null;
   return d.getMonth() + 1;
+}
+
+// ──────────────── 차시 ────────────────
+
+// 1단계: 텍스트에서 명시적 차시 패턴 추출 — "3차시", "3회차", "3회", "3차"
+function parseSessionFromText(text: string): number | null {
+  if (!text) return null;
+  const m = text.match(/(\d{1,2})\s*[차회]\s*시?/);
+  if (m) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= 99) return n;
+  }
+  return null;
+}
+
+// 2단계: 텍스트에서 교육 날짜 추출 → 모든 후보 ISO("YYYY-MM-DD") 배열로 반환
+// 인식 패턴: 2026-03-17, 2026.03.17, 2026/03/17, 20260317, 26.03.17, 3월 17일, 3/17, 03-17
+export function parseDatesFromText(text: string, defaultYear = new Date().getFullYear()): string[] {
+  if (!text) return [];
+  const out = new Set<string>();
+  const yy = String(defaultYear);
+
+  // YYYY[.-/년]MM[.-/월]DD[일?]
+  for (const m of text.matchAll(/(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?/g)) {
+    out.add(toIso(+m[1], +m[2], +m[3]));
+  }
+  // YYYYMMDD (8자리 연속)
+  for (const m of text.matchAll(/(20\d{2})(\d{2})(\d{2})(?!\d)/g)) {
+    out.add(toIso(+m[1], +m[2], +m[3]));
+  }
+  // YY.MM.DD (26.03.17 등 — 2000년대만)
+  for (const m of text.matchAll(/(?<!\d)(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})(?!\d)/g)) {
+    const yy2 = 2000 + +m[1];
+    if (yy2 >= 2024 && yy2 <= 2030) out.add(toIso(yy2, +m[2], +m[3]));
+  }
+  // M월 D일 (연도 없음 → defaultYear)
+  for (const m of text.matchAll(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)) {
+    out.add(toIso(+yy, +m[1], +m[2]));
+  }
+  // M/D, M-D, M.D (연도 없음 → defaultYear) — 시간/비율 등 오탐 방지 위해 앞뒤 비숫자 경계 + 1~12/1~31 제한
+  for (const m of text.matchAll(/(?<!\d)(\d{1,2})[/.\-](\d{1,2})(?!\d)/g)) {
+    const mm = +m[1], dd = +m[2];
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) out.add(toIso(+yy, mm, dd));
+  }
+  return [...out].filter(Boolean);
+}
+
+function toIso(y: number, m: number, d: number): string {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return "";
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// 후보 날짜들을 그 팀의 sessions와 매칭 — 정확 매칭 우선, 없으면 ±7일 가장 가까운 차시
+async function inferSessionByDates(teamId: number, candidateDates: string[], fallbackDate: string | null): Promise<number | null> {
+  const sessions = await db.select().from(schema.sessions).where(eq(schema.sessions.teamId, teamId));
+  if (sessions.length === 0) return null;
+
+  // 정확 매칭 (텍스트에서 뽑은 날짜 ↔ scheduled_date)
+  for (const cand of candidateDates) {
+    const exact = sessions.find((s) => s.scheduledDate === cand);
+    if (exact) return exact.sessionNo;
+  }
+
+  // 가까운 매칭 — 텍스트 날짜 우선, 없으면 수신일자
+  const tryDates = candidateDates.length > 0 ? candidateDates : (fallbackDate ? [fallbackDate] : []);
+  let best: { sessionNo: number; diffDays: number } | null = null;
+  for (const cand of tryDates) {
+    const candTs = new Date(cand).getTime();
+    if (isNaN(candTs)) continue;
+    for (const s of sessions) {
+      const d = new Date(s.scheduledDate).getTime();
+      if (isNaN(d)) continue;
+      const diff = Math.abs(candTs - d) / 86_400_000;
+      if (!best || diff < best.diffDays) best = { sessionNo: s.sessionNo, diffDays: diff };
+    }
+  }
+  if (!best) return null;
+  return best.diffDays <= 7 ? best.sessionNo : null;
+}
+
+export async function detectSessionNo(opts: {
+  teamId: number | null;
+  subject: string;
+  body?: string;
+  fileName?: string;
+  receivedAt: string;
+}): Promise<number | null> {
+  // 1순위: 텍스트 어디든 명시적 차시 패턴
+  const sources = [opts.fileName ?? "", opts.subject, opts.body ?? ""];
+  for (const src of sources) {
+    const n = parseSessionFromText(src);
+    if (n) return n;
+  }
+  if (!opts.teamId) return null;
+
+  // 2순위: 텍스트에서 추출한 교육 날짜 → sessions.scheduled_date 매칭
+  // 메일 수신일자에서 기본 연도 추출 (텍스트에 연도 없는 "3/17"·"3월 17일" 매칭용)
+  const recvYear = !isNaN(new Date(opts.receivedAt).getTime())
+    ? new Date(opts.receivedAt).getFullYear()
+    : new Date().getFullYear();
+  const allText = `${opts.fileName ?? ""} ${opts.subject} ${opts.body ?? ""}`;
+  const dates = parseDatesFromText(allText, recvYear);
+
+  // 3순위 폴백: 수신일자
+  return inferSessionByDates(opts.teamId, dates, opts.receivedAt);
 }

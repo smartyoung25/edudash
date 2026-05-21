@@ -1,10 +1,12 @@
 import { db, schema } from "@/db/client";
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { PageHeader } from "@/components/page-header";
-import { AlertTriangle, Mail, Upload, Check, X } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { AlertTriangle, Mail, ChevronRight } from "lucide-react";
+import { formatDate, cn } from "@/lib/utils";
 import { UploadButton } from "./upload-button";
 import { MailSyncButton } from "./mail-sync-button";
 import { ResolveDialog } from "./resolve-dialog";
@@ -13,28 +15,60 @@ import type { Role } from "@/lib/permissions";
 import { canResolveUnclassified, canUploadDocument } from "@/lib/permissions";
 
 const DOC_TYPES = ["출석부", "코디일지", "경비영수증", "강사비지급확인서", "교육생일지"] as const;
-const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 export const dynamic = "force-dynamic";
+
+// 파일명에서 N차시 패턴 추출 (DB session_no가 비어 있을 때 폴백)
+function extractSessionNo(fileName: string): number | null {
+  const m = fileName.match(/(\d{1,2})\s*차시/);
+  return m ? parseInt(m[1], 10) : null;
+}
 
 export default async function DocumentsPage() {
   const user = await getCurrentUser();
   const role = (user?.role ?? "professor") as Role;
-  const teams = await db.select().from(schema.teams);
-  const docs = await db.select().from(schema.documents);
-  const status = await db.select().from(schema.integrationStatus).where(eq(schema.integrationStatus.type, "mail"));
-  const mailStatus = status[0];
-  const unclassified = docs.filter((d) => d.docType === "미분류");
 
-  function find(teamId: number, docType: string, month: number) {
-    return docs.find((d) => d.teamId === teamId && d.docType === docType && d.month === month);
+  const [teams, allDocs, allSessions, statusRows] = await Promise.all([
+    db.select().from(schema.teams),
+    db.select().from(schema.documents),
+    db.select().from(schema.sessions),
+    db.select().from(schema.integrationStatus).where(eq(schema.integrationStatus.type, "mail")),
+  ]);
+  const mailStatus = statusRows[0];
+  const unclassified = allDocs.filter((d) => d.docType === "미분류");
+
+  // 팀별 차시 수
+  const sessionCountByTeam = new Map<number, number>();
+  for (const s of allSessions) {
+    sessionCountByTeam.set(s.teamId, (sessionCountByTeam.get(s.teamId) ?? 0) + 1);
+  }
+
+  // 팀별로 서류 유형별로 "제출된 차시 set" 계산
+  // 차시 결정: session_no 컬럼 → 파일명 패턴 → (둘 다 없으면 카운트 제외, 월별로만 표시되는 정산성 문서)
+  function submittedSessions(teamId: number, docType: string): Set<number> {
+    const set = new Set<number>();
+    for (const d of allDocs) {
+      if (d.teamId !== teamId || d.docType !== docType) continue;
+      const no = d.sessionNo ?? extractSessionNo(d.fileName);
+      if (no) set.add(no);
+    }
+    return set;
+  }
+
+  // 팀별로 차시와 무관한(월별) 정산 문서가 몇 건 있는지
+  function monthlyDocs(teamId: number, docType: string): number {
+    return allDocs.filter((d) => {
+      if (d.teamId !== teamId || d.docType !== docType) return false;
+      const no = d.sessionNo ?? extractSessionNo(d.fileName);
+      return !no;
+    }).length;
   }
 
   return (
     <div>
       <PageHeader
         title="서류제출"
-        description="메일 자동 수집 및 수동 업로드 서류를 팀×월 단위로 관리합니다"
+        description="메일 자동 수집 및 수동 업로드 서류를 팀별·차시별로 집계합니다"
         actions={
           <div className="flex items-center gap-2">
             {canUploadDocument(role) && <UploadButton teams={teams} />}
@@ -76,50 +110,78 @@ export default async function DocumentsPage() {
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-1">팀 × 월별 서류 현황</h2>
-          <p className="text-sm text-muted-foreground mb-4">5종 서류 제출/미제출 한눈에 보기</p>
+          <h2 className="text-lg font-semibold mb-1">팀별 차시 단위 서류 제출률</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            각 셀: 해당 서류가 제출된 <b>차시 수 / 전체 차시 수</b> · 파일명에 차시가 없는 월별 정산 문서는 별도 표기. 셀 클릭 시 팀 상세 페이지로 이동.
+          </p>
           <div className="overflow-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b sticky top-0 bg-background">
-                  <th className="text-left p-2 font-medium text-muted-foreground sticky left-0 bg-background z-10">팀</th>
-                  <th className="text-left p-2 font-medium text-muted-foreground">서류</th>
-                  {MONTHS.map((m) => (
-                    <th key={m} className="text-center p-2 font-medium text-muted-foreground min-w-[60px]">{m}월</th>
+                <tr className="border-b bg-muted/40 sticky top-0">
+                  <th className="text-left p-3 font-medium text-muted-foreground sticky left-0 bg-muted/40 z-10 min-w-[160px]">팀</th>
+                  {DOC_TYPES.map((dt) => (
+                    <th key={dt} className="text-center p-3 font-medium text-muted-foreground min-w-[140px]">{dt}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {teams.map((t) =>
-                  DOC_TYPES.map((dt, idx) => (
-                    <tr key={`${t.id}-${dt}`} className="border-b last:border-0">
-                      {idx === 0 && (
-                        <td rowSpan={DOC_TYPES.length} className="p-2 align-top sticky left-0 bg-background border-r">
-                          <div className="font-medium">{t.name}</div>
-                          <div className="text-xs text-muted-foreground">{t.cohort}</div>
-                        </td>
-                      )}
-                      <td className="p-2 text-xs text-muted-foreground">{dt}</td>
-                      {MONTHS.map((m) => {
-                        const doc = find(t.id, dt, m);
+                {teams.map((t) => {
+                  const total = sessionCountByTeam.get(t.id) ?? 0;
+                  return (
+                    <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20">
+                      <td className="p-3 sticky left-0 bg-background align-top">
+                        <Link href={`/teams/${t.id}/documents`} className="block group">
+                          <div className="font-medium group-hover:text-emerald-600 flex items-center gap-1">
+                            {t.name}
+                            <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">{t.cohort} · 총 {total}차시</div>
+                        </Link>
+                      </td>
+                      {DOC_TYPES.map((dt) => {
+                        const set = submittedSessions(t.id, dt);
+                        const submittedCount = set.size;
+                        const monthly = monthlyDocs(t.id, dt);
+                        const pct = total === 0 ? 0 : Math.round((submittedCount / total) * 100);
+                        const empty = submittedCount === 0 && monthly === 0;
                         return (
-                          <td key={m} className="p-2 text-center">
-                            {doc ? (
-                              <span className="inline-flex items-center gap-0.5">
-                                <Check className="h-3.5 w-3.5 text-emerald-500" />
-                                {doc.source === "mail" ? <Mail className="h-2.5 w-2.5 text-muted-foreground" /> : <Upload className="h-2.5 w-2.5 text-muted-foreground" />}
-                              </span>
-                            ) : (
-                              <X className="h-3.5 w-3.5 text-rose-400 inline" />
-                            )}
+                          <td key={dt} className="p-3 align-top">
+                            <Link href={`/teams/${t.id}/documents`} className="block">
+                              {empty ? (
+                                <div className="text-center text-xs text-rose-400">미제출</div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <div className="flex items-baseline justify-between gap-1">
+                                    <span
+                                      className={cn(
+                                        "text-sm font-semibold",
+                                        pct === 100 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-foreground",
+                                      )}
+                                    >
+                                      {submittedCount}
+                                      <span className="text-xs font-normal text-muted-foreground">/{total}</span>
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground">{pct}%</span>
+                                  </div>
+                                  <Progress value={pct} className="h-1.5" />
+                                  {monthly > 0 && (
+                                    <div className="text-[10px] text-amber-600">+ 월별 {monthly}건</div>
+                                  )}
+                                </div>
+                              )}
+                            </Link>
                           </td>
                         );
                       })}
                     </tr>
-                  )),
-                )}
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+          <div className="mt-4 text-xs text-muted-foreground space-y-1">
+            <div>· 차시 매칭: <code className="text-[11px]">documents.session_no</code> 또는 파일명의 <code className="text-[11px]">N차시</code> 패턴</div>
+            <div>· "월별 N건": 차시 정보 없이 월 단위로만 분류된 정산성 문서(경비·강사비 등)</div>
           </div>
         </Card>
       </div>

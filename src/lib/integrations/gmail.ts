@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { env, isMailEnabled } from "../env";
 import { getGmailClient } from "./google-auth";
 import { uploadDocumentToDrive } from "./drive";
-import { classifyByEmail, classifyDocType, detectMonth } from "./classifier";
+import { classifyTeam, classifyDocType, detectMonth, detectSessionNo, resetClassifierCache } from "./classifier";
 
 export interface MailSyncResult {
   ok: boolean;
@@ -66,6 +66,7 @@ export async function pollMailbox(): Promise<MailSyncResult> {
   let unclassified = 0;
 
   try {
+    resetClassifierCache();
     const list = await gmail.users.messages.list({
       userId,
       q: "is:unread has:attachment",
@@ -105,7 +106,26 @@ export async function pollMailbox(): Promise<MailSyncResult> {
         continue;
       }
 
-      const teamId = await classifyByEmail(fromAddress);
+      // 본문 텍스트 추출 (text/plain 우선, 없으면 text/html 평문화)
+      let bodyText = "";
+      for (const p of walkParts(payload)) {
+        if (!p.body?.data) continue;
+        if (p.mimeType === "text/plain" || (p.mimeType === "text/html" && !bodyText)) {
+          const raw = Buffer.from(p.body.data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+          const plain = p.mimeType === "text/html" ? raw.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ") : raw;
+          if (p.mimeType === "text/plain") { bodyText = plain; break; }
+          if (!bodyText) bodyText = plain;
+        }
+      }
+
+      // 팀 매칭: 보낸이 → 제목/본문/첨부파일명 별칭 순
+      const firstAttachmentName = [...walkParts(payload)].find((p) => p.filename)?.filename ?? "";
+      const teamId = await classifyTeam({
+        fromAddress,
+        subject,
+        body: bodyText,
+        fileName: firstAttachmentName,
+      });
       const teamName = teamNameLookup(teamId, teams);
       let attachmentSaved = 0;
 
@@ -132,7 +152,14 @@ export async function pollMailbox(): Promise<MailSyncResult> {
         const bytes = Buffer.from(b64, "base64");
 
         const docType = teamId ? classifyDocType(subject, filename) : "미분류";
-        const month = detectMonth(subject, receivedAt);
+        const month = detectMonth(subject, receivedAt, bodyText, filename);
+        const sessionNo = await detectSessionNo({
+          teamId,
+          subject,
+          body: bodyText,
+          fileName: filename,
+          receivedAt,
+        });
 
         const upload = await uploadDocumentToDrive({
           teamName,
@@ -147,6 +174,7 @@ export async function pollMailbox(): Promise<MailSyncResult> {
           teamId,
           docType: docType as "출석부" | "코디일지" | "경비영수증" | "강사비지급확인서" | "교육생일지" | "미분류",
           month,
+          sessionNo,
           fileName: filename,
           filePath: upload.webViewLink ?? upload.fileId ?? "",
           source: "mail",

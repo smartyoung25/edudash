@@ -63,6 +63,11 @@ server.err
 # vercel
 .vercel/
 
+# 배포 산출물 (로컬 전용 — 시크릿/시드 SQL)
+/seed-inserts.sql
+/seed-dump.err
+/DEPLOY_SECRETS.local.txt
+
 # Claude Code 로컬 설정 (개인 IDE)
 .claude/settings.local.json
 .claude/launch.json

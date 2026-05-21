@@ -12,6 +12,8 @@ import { TeamTabs } from "./team-tabs";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
 
+export const dynamic = "force-dynamic";
+
 export default async function TeamLayout({
   children,
   params,
@@ -68,7 +70,10 @@ export default async function TeamLayout({
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
                 <div className="text-xs text-muted-foreground">차시</div>
-                <div className="text-2xl font-bold">{progress.done}/{progress.total}</div>
+                <div className="text-2xl font-bold">{progress.done}/{progress.effectiveTotal}</div>
+                {progress.cancelled > 0 && (
+                  <div className="text-[10px] text-muted-foreground">취소 {progress.cancelled}</div>
+                )}
               </div>
             </div>
             <Progress value={progress.progressPercent} indicatorClassName="bg-emerald-500" />
