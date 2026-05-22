@@ -68,6 +68,20 @@ server.err
 /seed-dump.err
 /DEPLOY_SECRETS.local.txt
 
+# 서비스 계정 / 비밀 키 (절대 커밋 X)
+.secrets/
+*-credentials*.json
+*service-account*.json
+sa.json
+
+# 임시 추출/처리 폴더 (대용량, 재생성 가능)
+tmp_*/
+운영계획서 최종/
+
+# 일회성 처리 산출물
+budget_results.json
+cookies.txt
+
 # Claude Code 로컬 설정 (개인 IDE)
 .claude/settings.local.json
 .claude/launch.json

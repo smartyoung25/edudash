@@ -174,6 +174,29 @@ export async function getDriveFileMeta(fileId: string): Promise<{ webViewLink?: 
 }
 
 /**
+ * Drive 파일 ID로 바이너리 다운로드.
+ * 서비스 계정에 접근 권한 있어야 함.
+ */
+export async function downloadDriveFile(fileId: string): Promise<{ ok: true; name: string; buf: Buffer; mimeType: string } | { ok: false; message: string }> {
+  const drive = getDriveClient();
+  if (!drive) return { ok: false, message: "Drive client not initialized" };
+  try {
+    const meta = await drive.files.get({ fileId, fields: "id,name,mimeType,size" });
+    const name = meta.data.name ?? `file_${fileId}`;
+    const mimeType = meta.data.mimeType ?? "application/octet-stream";
+
+    const res = await drive.files.get(
+      { fileId, alt: "media" },
+      { responseType: "arraybuffer" }
+    );
+    const buf = Buffer.from(res.data as ArrayBuffer);
+    return { ok: true, name, buf, mimeType };
+  } catch (err: any) {
+    return { ok: false, message: err?.message || "다운로드 실패" };
+  }
+}
+
+/**
  * Backwards-compatible wrapper for receipt uploads.
  */
 export async function uploadReceipt(opts: {

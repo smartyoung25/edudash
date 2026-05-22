@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ChevronLeft, MapPin, Users, GraduationCap, CalendarClock } from "lucide-react";
+import { ChevronLeft, MapPin, Users, GraduationCap, CalendarClock, Phone, Mail, UserCog } from "lucide-react";
 import { getTeamProgress } from "@/lib/kpi";
 import { PRODUCT_COLORS, type Product } from "@/lib/teams";
 import { cn, formatDate } from "@/lib/utils";
@@ -54,8 +54,45 @@ export default async function TeamLayout({
             <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1"><Users className="h-4 w-4" />{team.headCount}명</span>
               <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{team.region}</span>
-              <span className="flex items-center gap-1"><GraduationCap className="h-4 w-4" />{team.professorName} 주임교수</span>
               <span className="flex items-center gap-1"><CalendarClock className="h-4 w-4" />최종 {formatDate(team.endDate)}</span>
+            </div>
+
+            {/* 담당자 카드 */}
+            <div className="grid sm:grid-cols-2 gap-2 max-w-2xl pt-1">
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  주임교수
+                </div>
+                <div className="font-medium text-sm">{team.professorName || "미입력"}</div>
+                {team.professorPhone && (
+                  <a href={`tel:${team.professorPhone.replace(/-/g, "")}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <Phone className="h-3 w-3" /><span className="tabular-nums">{team.professorPhone}</span>
+                  </a>
+                )}
+                {team.professorEmail && (
+                  <a href={`mailto:${team.professorEmail}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <Mail className="h-3 w-3" /><span className="truncate">{team.professorEmail}</span>
+                  </a>
+                )}
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <UserCog className="h-3.5 w-3.5" />
+                  코디네이터
+                </div>
+                <div className="font-medium text-sm">{team.coordinatorName || "미입력"}</div>
+                {team.coordinatorPhone && (
+                  <a href={`tel:${team.coordinatorPhone.replace(/-/g, "")}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <Phone className="h-3 w-3" /><span className="tabular-nums">{team.coordinatorPhone}</span>
+                  </a>
+                )}
+                {team.coordinatorEmail && (
+                  <a href={`mailto:${team.coordinatorEmail}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <Mail className="h-3 w-3" /><span className="truncate">{team.coordinatorEmail}</span>
+                  </a>
+                )}
+              </div>
             </div>
           </div>
           <div className="min-w-[260px] space-y-2">

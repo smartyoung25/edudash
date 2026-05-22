@@ -5,9 +5,24 @@ function read(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+// 서비스 계정 JSON을 환경변수 또는 파일 경로에서 읽어옴
+function readServiceAccountJson(): string {
+  const direct = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (direct) return direct;
+  // GOOGLE_VISION_KEY_PATH 또는 GOOGLE_APPLICATION_CREDENTIALS 에 파일 경로가 있으면 읽어서 반환
+  const path = process.env.GOOGLE_VISION_KEY_PATH || process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (path && typeof window === "undefined") {
+    try {
+      const fs = require("fs") as typeof import("fs");
+      if (fs.existsSync(path)) return fs.readFileSync(path, "utf-8");
+    } catch {}
+  }
+  return "";
+}
+
 export const env = {
   get SESSION_PASSWORD() { return read("SESSION_PASSWORD"); },
-  get GOOGLE_SERVICE_ACCOUNT_JSON() { return read("GOOGLE_SERVICE_ACCOUNT_JSON"); },
+  get GOOGLE_SERVICE_ACCOUNT_JSON() { return readServiceAccountJson(); },
   get GOOGLE_DELEGATED_USER() { return read("GOOGLE_DELEGATED_USER"); },
   get DAILY_SHEETS_SPREADSHEET_ID() { return read("DAILY_SHEETS_SPREADSHEET_ID"); },
   get EXPENSE_SHEETS_SPREADSHEET_ID() { return read("EXPENSE_SHEETS_SPREADSHEET_ID"); },

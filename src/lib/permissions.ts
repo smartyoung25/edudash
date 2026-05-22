@@ -2,7 +2,7 @@
 
 export type Role = "admin" | "coordinator" | "professor";
 
-export type ModuleKey = "dashboard" | "daily" | "kpi" | "documents" | "reports" | "contacts" | "settings";
+export type ModuleKey = "dashboard" | "daily" | "kpi" | "documents" | "expenses" | "agency" | "reports" | "contacts" | "settings";
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "관리자",
@@ -12,9 +12,9 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 // 모듈별 사이드바 표시 여부
 export const MENU_ACCESS: Record<Role, ModuleKey[]> = {
-  admin:       ["dashboard", "daily", "kpi", "documents", "reports", "contacts", "settings"],
-  coordinator: ["dashboard", "daily", "kpi", "documents"],
-  professor:   ["dashboard", "daily", "kpi", "documents"],
+  admin:       ["dashboard", "daily", "kpi", "documents", "expenses", "agency", "reports", "contacts", "settings"],
+  coordinator: ["dashboard", "daily", "kpi", "documents", "expenses"],
+  professor:   ["dashboard", "daily", "kpi", "documents", "expenses"],
 };
 
 export function canAccess(role: Role, module: ModuleKey): boolean {

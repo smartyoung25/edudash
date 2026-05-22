@@ -103,10 +103,15 @@ async function main() {
   for (const t of insertedTeams) {
     teamMembers[t.id] = [];
     for (let i = 0; i < t.headCount; i++) {
+      const phone = `010-${String(1000 + ((memberSeed * 1234567) % 9000)).padStart(4, "0")}-${String(1000 + ((memberSeed * 7654321) % 9000)).padStart(4, "0")}`;
+      const name = pickName(memberSeed++);
+      const email = `user${memberSeed}@growfarm.kr`;
       const [row] = await db.insert(members).values({
         teamId: t.id,
-        name: pickName(memberSeed++),
+        name,
         gender: pickGender(memberSeed),
+        phone,
+        email,
       }).returning({ id: members.id });
       teamMembers[t.id].push(row.id);
     }

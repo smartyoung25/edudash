@@ -26,6 +26,11 @@ export const teams = sqliteTable("teams", {
   totalSessions: integer("total_sessions").notNull(),
   endDate: text("end_date").notNull(),
   professorName: text("professor_name").notNull(),
+  professorPhone: text("professor_phone"),
+  professorEmail: text("professor_email"),
+  coordinatorName: text("coordinator_name"),
+  coordinatorPhone: text("coordinator_phone"),
+  coordinatorEmail: text("coordinator_email"),
 });
 
 export const members = sqliteTable("members", {
@@ -35,6 +40,8 @@ export const members = sqliteTable("members", {
   gender: text("gender", { enum: ["M", "F"] }),
   learnerType: text("learner_type"), // 청년농 | 농업인
   birthDate: text("birth_date"),     // YYYY-MM-DD
+  phone: text("phone"),              // 010-XXXX-XXXX
+  email: text("email"),              // user@example.com
   eduStatus: text("edu_status"),     // 교육중 | 교육취소
 });
 
@@ -137,6 +144,77 @@ export const teamAliases = sqliteTable("team_aliases", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
   alias: text("alias").notNull().unique(),
+});
+
+// ───────── 팀별 정산 — 카테고리 예산 ─────────
+
+export const expenseBudgets = sqliteTable("expense_budgets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  category: text("category", { enum: ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] }).notNull(),
+  amount: integer("amount").notNull().default(0),
+}, (t) => ({
+  uq: uniqueIndex("expense_budgets_team_cat_uq").on(t.teamId, t.category),
+}));
+
+// ───────── 팀별 정산 (지출) ─────────
+
+export const expenses = sqliteTable("expenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  sessionId: integer("session_id").references(() => sessions.id, { onDelete: "set null" }),
+  sessionNo: integer("session_no"), // 회차 번호 (sessionId 없을 때도 입력 가능)
+  spentDate: text("spent_date").notNull(),  // YYYY-MM-DD
+  category: text("category", { enum: ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] }).notNull(),
+  supplyAmount: integer("supply_amount").notNull().default(0),  // 공급가액
+  vatAmount: integer("vat_amount").notNull().default(0),        // 부가세액
+  totalAmount: integer("total_amount").notNull().default(0),    // 집행액 = 공급가 + 부가세
+  vendorType: text("vendor_type", { enum: ["개인사업자", "법인사업자"] }),
+  vendorBizNo: text("vendor_biz_no"),       // 사업자등록번호
+  vendorName: text("vendor_name"),          // 거래처명
+  vendorCeo: text("vendor_ceo"),            // 대표자명
+  cardType: text("card_type", { enum: ["기업카드", "기업법인카드", "NH법인카드", "개인카드"] }),
+  cardLast4: text("card_last4"),            // 카드번호 끝 4자리
+  payerName: text("payer_name"),            // 개인카드인 경우 결제한 사람
+  reimburseStatus: text("reimburse_status", { enum: ["미정산", "정산완료"] }).default("미정산"),
+  reimbursedAt: text("reimbursed_at"),
+  reimburseNote: text("reimburse_note"),
+  memo: text("memo"),
+  docType: text("doc_type", { enum: ["영수증", "거래명세표", "세금계산서"] }).default("영수증"),
+  source: text("source", { enum: ["manual", "mail"] }).notNull().default("manual"),
+  mailMessageId: text("mail_message_id"),         // IMAP UID 또는 Message-ID 중복방지
+  mailFrom: text("mail_from"),
+  mailReceivedAt: text("mail_received_at"),
+  attachmentName: text("attachment_name"),
+  receiptFilePath: text("receipt_file_path"),   // data/receipts/... 로컬 경로
+  receiptMimeType: text("receipt_mime_type"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// ───────── 기관경비 (팀과 무관한 본사 경비) ─────────
+
+export const agencyExpenses = sqliteTable("agency_expenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  kind: text("kind", { enum: ["출장비", "기타경비"] }).notNull(),
+  spentDate: text("spent_date").notNull(),
+  supplyAmount: integer("supply_amount").notNull().default(0),
+  vatAmount: integer("vat_amount").notNull().default(0),
+  totalAmount: integer("total_amount").notNull().default(0),
+  vendorType: text("vendor_type", { enum: ["개인사업자", "법인사업자"] }),
+  vendorBizNo: text("vendor_biz_no"),
+  vendorName: text("vendor_name"),
+  vendorCeo: text("vendor_ceo"),
+  cardType: text("card_type", { enum: ["기업카드", "기업법인카드", "NH법인카드", "개인카드"] }),
+  cardLast4: text("card_last4"),
+  payerName: text("payer_name"),
+  reimburseStatus: text("reimburse_status", { enum: ["미정산", "정산완료"] }).default("미정산"),
+  reimbursedAt: text("reimbursed_at"),
+  reimburseNote: text("reimburse_note"),
+  memo: text("memo"),
+  docType: text("doc_type", { enum: ["영수증", "거래명세표", "세금계산서"] }).default("영수증"),
+  receiptFilePath: text("receipt_file_path"),
+  receiptMimeType: text("receipt_mime_type"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 // ───────── 연락망 ─────────

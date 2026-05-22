@@ -1,0 +1,82 @@
+import Link from "next/link";
+import { db, schema } from "@/db/client";
+import { redirect } from "next/navigation";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { Receipt, ChevronRight } from "lucide-react";
+import { PRODUCT_COLORS, type Product } from "@/lib/teams";
+import { cn } from "@/lib/utils";
+import { requireAuth } from "@/lib/auth";
+import { isTeamScoped } from "@/lib/permissions";
+
+export const dynamic = "force-dynamic";
+
+function fmt(n: number) {
+  return n.toLocaleString("ko-KR") + "원";
+}
+
+export default async function ExpensesOverview() {
+  const session = await requireAuth();
+
+  // 팀 한정 역할은 본인 팀으로 바로 이동
+  if (isTeamScoped(session.role!) && session.teamId) {
+    redirect(`/expenses/${session.teamId}`);
+  }
+
+  const [teams, allExpenses] = await Promise.all([
+    db.select().from(schema.teams),
+    db.select().from(schema.expenses),
+  ]);
+
+  const totalsByTeam = new Map<number, number>();
+  const countByTeam = new Map<number, number>();
+  for (const e of allExpenses) {
+    totalsByTeam.set(e.teamId, (totalsByTeam.get(e.teamId) ?? 0) + e.totalAmount);
+    countByTeam.set(e.teamId, (countByTeam.get(e.teamId) ?? 0) + 1);
+  }
+  const grandTotal = allExpenses.reduce((s, e) => s + e.totalAmount, 0);
+
+  return (
+    <div>
+      <PageHeader
+        title="팀별정산"
+        description="각 팀의 회차별 지출과 영수증 세부 내역을 관리합니다"
+      />
+      <div className="p-6 space-y-6">
+        <Card className="p-4 flex items-center gap-3">
+          <Receipt className="h-6 w-6 text-emerald-600" />
+          <div>
+            <div className="text-xs text-muted-foreground">전체 집행 합계</div>
+            <div className="text-2xl font-bold tabular-nums">{fmt(grandTotal)}</div>
+          </div>
+          <div className="ml-auto text-sm text-muted-foreground">{allExpenses.length}건</div>
+        </Card>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {teams.map((t) => {
+            const total = totalsByTeam.get(t.id) ?? 0;
+            const cnt = countByTeam.get(t.id) ?? 0;
+            return (
+              <Link key={t.id} href={`/expenses/${t.id}`} className="block">
+                <Card className="p-4 hover:bg-muted/40 transition-colors">
+                  <div className="flex items-start gap-2 mb-2">
+                    <Badge className={cn("border", PRODUCT_COLORS[t.product as Product])}>{t.product}</Badge>
+                    <Badge variant="outline">{t.cohort}</Badge>
+                    <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="font-semibold mb-1">{t.name}</div>
+                  <div className="text-xs text-muted-foreground mb-2">{t.region}</div>
+                  <div className="flex items-baseline justify-between">
+                    <div className="text-lg font-bold tabular-nums">{fmt(total)}</div>
+                    <div className="text-xs text-muted-foreground">{cnt}건</div>
+                  </div>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

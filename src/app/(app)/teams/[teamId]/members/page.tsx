@@ -2,7 +2,7 @@ import { db, schema } from "@/db/client";
 import { eq } from "drizzle-orm";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { User, Users } from "lucide-react";
+import { User, Users, Phone, Mail } from "lucide-react";
 
 function avatarColor(name: string) {
   const colors = [
@@ -136,6 +136,36 @@ export default async function MembersTab({ params }: { params: Promise<{ teamId:
                         </span>
                       )}
                     </div>
+
+                    {/* 연락처 */}
+                    {(m.phone || m.email) && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {m.phone && (
+                          <a
+                            href={`tel:${m.phone.replace(/-/g, "")}`}
+                            className={cn(
+                              "flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors",
+                              isCancelled && "pointer-events-none"
+                            )}
+                          >
+                            <Phone className="h-3 w-3 flex-shrink-0" />
+                            <span className="tabular-nums">{m.phone}</span>
+                          </a>
+                        )}
+                        {m.email && (
+                          <a
+                            href={`mailto:${m.email}`}
+                            className={cn(
+                              "flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors",
+                              isCancelled && "pointer-events-none"
+                            )}
+                          >
+                            <Mail className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{m.email}</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
