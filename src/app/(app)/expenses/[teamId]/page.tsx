@@ -13,6 +13,7 @@ import { AddExpenseDialog } from "./add-expense-dialog";
 import { BudgetDialog } from "./budget-dialog";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
+import { countsTowardTotal } from "@/lib/expense";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +50,11 @@ export default async function TeamExpensesPage({ params }: { params: Promise<{ t
     db.select().from(schema.expenseBudgets).where(eq(schema.expenseBudgets.teamId, teamId)),
   ]);
 
-  // 카테고리별 합계
+  // 카테고리별 합계 (거래명세표/세금계산서 제외)
   const byCategory = new Map<string, number>();
   for (const c of CATEGORIES) byCategory.set(c, 0);
   for (const e of expenses) {
+    if (!countsTowardTotal(e)) continue;
     byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.totalAmount);
   }
 
@@ -62,9 +64,9 @@ export default async function TeamExpensesPage({ params }: { params: Promise<{ t
   for (const b of budgetRows) budgetByCat[b.category] = b.amount;
   const totalBudget = Object.values(budgetByCat).reduce((s, n) => s + n, 0);
 
-  const total = expenses.reduce((s, e) => s + e.totalAmount, 0);
-  const totalSupply = expenses.reduce((s, e) => s + e.supplyAmount, 0);
-  const totalVat = expenses.reduce((s, e) => s + e.vatAmount, 0);
+  const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
+  const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
+  const totalVat = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.vatAmount : s), 0);
 
   return (
     <div>

@@ -14,6 +14,7 @@ import { ReceiptViewer } from "../receipt-viewer";
 import { TeamReimburseButton } from "../reimburse-button";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
+import { countsTowardTotal } from "@/lib/expense";
 
 export const dynamic = "force-dynamic";
 
@@ -64,13 +65,14 @@ export default async function SessionExpensesPage({
     )
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
 
-  const total = expenses.reduce((s, e) => s + e.totalAmount, 0);
-  const totalSupply = expenses.reduce((s, e) => s + e.supplyAmount, 0);
-  const totalVat = expenses.reduce((s, e) => s + e.vatAmount, 0);
+  const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
+  const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
+  const totalVat = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.vatAmount : s), 0);
 
   const byCategory = new Map<string, number>();
   for (const c of CATEGORIES) byCategory.set(c, 0);
   for (const e of expenses) {
+    if (!countsTowardTotal(e)) continue;
     byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.totalAmount);
   }
 
@@ -146,12 +148,17 @@ export default async function SessionExpensesPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {expenses.map((e) => (
-                    <tr key={e.id} className="border-t hover:bg-muted/20">
+                  {expenses.map((e) => {
+                    const excluded = !countsTowardTotal(e);
+                    return (
+                    <tr key={e.id} className={cn("border-t hover:bg-muted/20", excluded && "bg-amber-50/40")}>
                       <td className="px-3 py-2 tabular-nums">{formatDate(e.spentDate)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1 flex-wrap">
                           <span className={cn("text-[11px] px-1.5 py-0.5 rounded border", CAT_COLORS[e.category])}>{e.category}</span>
+                          {excluded && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">{e.docType} · 합산제외</span>
+                          )}
                           {(e.category === "주임강사수당" || e.category === "퍼실리테이터수당") && (
                             <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} label="지급처리" />
                           )}
@@ -170,10 +177,11 @@ export default async function SessionExpensesPage({
                       <td className="px-3 py-2 tabular-nums text-xs">{e.vendorBizNo || "-"}</td>
                       <td className="px-3 py-2 tabular-nums text-right">{fmt(e.supplyAmount)}</td>
                       <td className="px-3 py-2 tabular-nums text-right">{fmt(e.vatAmount)}</td>
-                      <td className="px-3 py-2 tabular-nums text-right font-bold">{fmt(e.totalAmount)}</td>
+                      <td className={cn("px-3 py-2 tabular-nums text-right font-bold", excluded && "line-through text-muted-foreground font-normal")}>{fmt(e.totalAmount)}</td>
                       <td className="px-2 py-2"><DeleteExpenseButton id={e.id} /></td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

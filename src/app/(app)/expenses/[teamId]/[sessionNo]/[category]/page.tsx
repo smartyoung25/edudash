@@ -14,6 +14,7 @@ import { ReceiptViewer } from "../../receipt-viewer";
 import { TeamReimburseButton } from "../../reimburse-button";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
+import { countsTowardTotal } from "@/lib/expense";
 
 export const dynamic = "force-dynamic";
 
@@ -65,9 +66,9 @@ export default async function SessionCategoryPage({
     ))
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
 
-  const total = expenses.reduce((s, e) => s + e.totalAmount, 0);
-  const totalSupply = expenses.reduce((s, e) => s + e.supplyAmount, 0);
-  const totalVat = expenses.reduce((s, e) => s + e.vatAmount, 0);
+  const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
+  const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
+  const totalVat = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.vatAmount : s), 0);
   const sessionLabel = isNoneSession ? "회차 미지정" : `${sessionNo}회차`;
 
   return (
@@ -128,9 +129,16 @@ export default async function SessionCategoryPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {expenses.map((e) => (
-                    <tr key={e.id} className="border-t hover:bg-muted/20">
-                      <td className="px-3 py-2 tabular-nums">{formatDate(e.spentDate)}</td>
+                  {expenses.map((e) => {
+                    const excluded = !countsTowardTotal(e);
+                    return (
+                    <tr key={e.id} className={cn("border-t hover:bg-muted/20", excluded && "bg-amber-50/40")}>
+                      <td className="px-3 py-2 tabular-nums">
+                        {formatDate(e.spentDate)}
+                        {excluded && (
+                          <div className="mt-0.5 text-[10px] inline-block px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">{e.docType} · 합산제외</div>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="font-medium">{e.vendorName || "-"}</div>
                         {e.vendorCeo && <div className="text-xs text-muted-foreground">{e.vendorCeo} · {e.vendorType || "-"}</div>}
@@ -145,10 +153,11 @@ export default async function SessionCategoryPage({
                       <td className="px-3 py-2 tabular-nums text-xs">{e.vendorBizNo || "-"}</td>
                       <td className="px-3 py-2 tabular-nums text-right">{fmt(e.supplyAmount)}</td>
                       <td className="px-3 py-2 tabular-nums text-right">{fmt(e.vatAmount)}</td>
-                      <td className="px-3 py-2 tabular-nums text-right font-bold">{fmt(e.totalAmount)}</td>
+                      <td className={cn("px-3 py-2 tabular-nums text-right font-bold", excluded && "line-through text-muted-foreground font-normal")}>{fmt(e.totalAmount)}</td>
                       <td className="px-2 py-2"><DeleteExpenseButton id={e.id} /></td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -7,13 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { PRODUCT_COLORS, type Product } from "@/lib/teams";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { AddExpenseDialog } from "../../add-expense-dialog";
-import { DeleteExpenseButton } from "../../delete-button";
-import { ReceiptViewer } from "../../receipt-viewer";
-import { TeamReimburseButton } from "../../reimburse-button";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
+import { countsTowardTotal } from "@/lib/expense";
 
 export const dynamic = "force-dynamic";
 
@@ -55,20 +53,21 @@ export default async function CategoryExpensesPage({
     .where(and(eq(schema.expenses.teamId, teamId), eq(schema.expenses.category, category)))
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
 
-  const total = expenses.reduce((s, e) => s + e.totalAmount, 0);
-  const totalSupply = expenses.reduce((s, e) => s + e.supplyAmount, 0);
-  const totalVat = expenses.reduce((s, e) => s + e.vatAmount, 0);
+  const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
+  const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
+  const totalVat = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.vatAmount : s), 0);
 
-  // 회차별 분포
+  // 회차별 분포 (거래명세표는 합산 제외, count는 전체 포함)
   const bySession = new Map<number, { total: number; count: number }>();
   let noSessionTotal = 0;
   let noSessionCount = 0;
   for (const e of expenses) {
+    const amt = countsTowardTotal(e) ? e.totalAmount : 0;
     if (e.sessionNo) {
       const cur = bySession.get(e.sessionNo) ?? { total: 0, count: 0 };
-      bySession.set(e.sessionNo, { total: cur.total + e.totalAmount, count: cur.count + 1 });
+      bySession.set(e.sessionNo, { total: cur.total + amt, count: cur.count + 1 });
     } else {
-      noSessionTotal += e.totalAmount;
+      noSessionTotal += amt;
       noSessionCount += 1;
     }
   }
@@ -114,12 +113,12 @@ export default async function CategoryExpensesPage({
 
         {/* 회차별 분포 */}
         <div>
-          <h3 className="text-sm font-semibold mb-2">{category} — 회차별 사용금액 <span className="text-xs text-muted-foreground font-normal">(클릭하면 그 회차 전체 영수증으로 이동)</span></h3>
+          <h3 className="text-sm font-semibold mb-2">{category} — 회차별 사용금액 <span className="text-xs text-muted-foreground font-normal">(회차를 클릭하면 영수증 내역이 표시됩니다)</span></h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {allSessionCards.map(({ no, total: t, count }) => {
               const hasData = count > 0;
               return (
-                <Link key={no} href={`/expenses/${teamId}/${no}`} className="block">
+                <Link key={no} href={`/expenses/${teamId}/${no}/${encodeURIComponent(category)}`} className="block">
                   <Card className={cn("p-3 hover:bg-muted/40 transition-colors cursor-pointer", hasData ? "" : "opacity-60")}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-medium text-muted-foreground">{no}회차</span>
@@ -132,73 +131,20 @@ export default async function CategoryExpensesPage({
               );
             })}
             {noSessionCount > 0 && (
-              <Card className="p-3 border-dashed">
-                <div className="text-xs font-medium text-muted-foreground mb-1">회차 미지정</div>
-                <div className="text-base font-bold tabular-nums">{fmt(noSessionTotal)}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">{noSessionCount}건</div>
-              </Card>
+              <Link href={`/expenses/${teamId}/none/${encodeURIComponent(category)}`} className="block">
+                <Card className="p-3 border-dashed hover:bg-muted/40 transition-colors cursor-pointer">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-muted-foreground">회차 미지정</span>
+                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                  </div>
+                  <div className="text-base font-bold tabular-nums">{fmt(noSessionTotal)}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{noSessionCount}건</div>
+                </Card>
+              </Link>
             )}
           </div>
         </div>
 
-        {/* 영수증 목록 (이 카테고리만) */}
-        <div>
-          <h3 className="text-sm font-semibold mb-2">영수증 내역 ({expenses.length}건)</h3>
-          {expenses.length === 0 ? (
-            <Card className="p-8 text-center text-muted-foreground text-sm">
-              {category}에 등록된 지출이 없습니다.
-            </Card>
-          ) : (
-            <div className="rounded-lg border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs">
-                  <tr>
-                    <th className="px-3 py-2 text-left">사용일</th>
-                    <th className="px-3 py-2 text-left">회차</th>
-                    <th className="px-3 py-2 text-left">거래처</th>
-                    <th className="px-3 py-2 text-left">사업자번호</th>
-                    <th className="px-3 py-2 text-right">공급가</th>
-                    <th className="px-3 py-2 text-right">부가세</th>
-                    <th className="px-3 py-2 text-right">집행액</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenses.map((e) => (
-                    <tr key={e.id} className="border-t hover:bg-muted/20">
-                      <td className="px-3 py-2 tabular-nums">{formatDate(e.spentDate)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {e.sessionNo ? (
-                            <Link href={`/expenses/${teamId}/${e.sessionNo}`} className="text-emerald-700 hover:underline">{e.sessionNo}회차</Link>
-                          ) : "-"}
-                          {(category === "주임강사수당" || category === "퍼실리테이터수당") && (
-                            <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} label="지급처리" />
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{e.vendorName || "-"}</div>
-                        {e.vendorCeo && <div className="text-xs text-muted-foreground">{e.vendorCeo} · {e.vendorType || "-"}</div>}
-                        {e.memo && <div className="text-xs text-muted-foreground italic">{e.memo}</div>}
-                        {e.receiptFilePath && (
-                          <div className="mt-1">
-                            <ReceiptViewer expenseId={e.id} mimeType={e.receiptMimeType} />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 tabular-nums text-xs">{e.vendorBizNo || "-"}</td>
-                      <td className="px-3 py-2 tabular-nums text-right">{fmt(e.supplyAmount)}</td>
-                      <td className="px-3 py-2 tabular-nums text-right">{fmt(e.vatAmount)}</td>
-                      <td className="px-3 py-2 tabular-nums text-right font-bold">{fmt(e.totalAmount)}</td>
-                      <td className="px-2 py-2"><DeleteExpenseButton id={e.id} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

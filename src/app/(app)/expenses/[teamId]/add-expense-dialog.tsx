@@ -11,6 +11,7 @@ import { Plus, ScanLine, Loader2 } from "lucide-react";
 
 const CATEGORIES = ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
 const VENDOR_TYPES = ["개인사업자", "법인사업자"] as const;
+const DOC_TYPES = ["영수증", "거래명세표", "세금계산서"] as const;
 
 export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; totalSessions: number }) {
   const router = useRouter();
@@ -28,6 +29,7 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
   const [vendorName, setVendorName] = useState("");
   const [vendorCeo, setVendorCeo] = useState("");
   const [memo, setMemo] = useState("");
+  const [docType, setDocType] = useState<string>("영수증");
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrRawText, setOcrRawText] = useState<string | null>(null);
   const [showRawText, setShowRawText] = useState(false);
@@ -79,6 +81,7 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
     setVendorName("");
     setVendorCeo("");
     setMemo("");
+    setDocType("영수증");
     setError(null);
   }
 
@@ -95,7 +98,7 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
           teamId, spentDate, sessionNo: sessionNo || null, category,
           supplyAmount: supply, vatAmount: vat,
           vendorType: vendorType || null,
-          vendorBizNo, vendorName, vendorCeo, memo,
+          vendorBizNo, vendorName, vendorCeo, memo, docType,
         }),
       });
       if (!res.ok) {
@@ -167,14 +170,28 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
               </Select>
             </div>
           </div>
-          <div>
-            <Label>카테고리</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>카테고리</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>서류유형</Label>
+              <Select value={docType} onValueChange={setDocType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DOC_TYPES.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {docType !== "영수증" && (
+                <div className="text-[10px] text-amber-700 mt-1">합산에 포함되지 않습니다</div>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>

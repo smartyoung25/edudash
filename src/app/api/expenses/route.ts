@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
+import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
 
 export async function POST(req: Request) {
   const session = await requireAuth();
@@ -10,7 +11,7 @@ export async function POST(req: Request) {
   const {
     teamId, sessionNo, spentDate, category,
     supplyAmount, vatAmount,
-    vendorType, vendorBizNo, vendorName, vendorCeo, memo,
+    vendorType, vendorBizNo, vendorName, vendorCeo, memo, docType,
   } = body;
 
   if (!teamId || !spentDate || !category) {
@@ -24,9 +25,16 @@ export async function POST(req: Request) {
   const vat = Number(vatAmount) || 0;
   const total = supply + vat;
 
+  let resolvedSessionNo: number | null = sessionNo ? Number(sessionNo) : null;
+  if (resolvedSessionNo == null && AUTO_SESSION_CATEGORIES.has(category)) {
+    const sessions = await db.select({ sessionNo: schema.sessions.sessionNo, scheduledDate: schema.sessions.scheduledDate })
+      .from(schema.sessions).where(eq(schema.sessions.teamId, Number(teamId)));
+    resolvedSessionNo = pickNearestSessionNo(spentDate, sessions);
+  }
+
   const [row] = await db.insert(schema.expenses).values({
     teamId: Number(teamId),
-    sessionNo: sessionNo ? Number(sessionNo) : null,
+    sessionNo: resolvedSessionNo,
     spentDate,
     category,
     supplyAmount: supply,
@@ -37,6 +45,7 @@ export async function POST(req: Request) {
     vendorName: vendorName || null,
     vendorCeo: vendorCeo || null,
     memo: memo || null,
+    docType: (docType === "거래명세표" || docType === "세금계산서") ? docType : "영수증",
   }).returning({ id: schema.expenses.id });
 
   return NextResponse.json({ ok: true, id: row.id });

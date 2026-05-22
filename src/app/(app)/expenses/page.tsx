@@ -9,6 +9,7 @@ import { PRODUCT_COLORS, type Product } from "@/lib/teams";
 import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
+import { countsTowardTotal } from "@/lib/expense";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +33,11 @@ export default async function ExpensesOverview() {
   const totalsByTeam = new Map<number, number>();
   const countByTeam = new Map<number, number>();
   for (const e of allExpenses) {
-    totalsByTeam.set(e.teamId, (totalsByTeam.get(e.teamId) ?? 0) + e.totalAmount);
     countByTeam.set(e.teamId, (countByTeam.get(e.teamId) ?? 0) + 1);
+    if (!countsTowardTotal(e)) continue; // 거래명세표/세금계산서는 합산 제외
+    totalsByTeam.set(e.teamId, (totalsByTeam.get(e.teamId) ?? 0) + e.totalAmount);
   }
-  const grandTotal = allExpenses.reduce((s, e) => s + e.totalAmount, 0);
+  const grandTotal = allExpenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
 
   return (
     <div>

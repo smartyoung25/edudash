@@ -196,6 +196,9 @@ export const expenses = sqliteTable("expenses", {
 export const agencyExpenses = sqliteTable("agency_expenses", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   kind: text("kind", { enum: ["출장비", "기타경비"] }).notNull(),
+  // 출장비 세부 분류 — 한 출장이 여러 영수증으로 쪼개진다
+  subcategory: text("subcategory", { enum: ["일비", "식비", "교통비", "숙박비", "다과비", "택시비", "기타"] }),
+  tripName: text("trip_name"),    // 같은 출장을 그룹핑하는 이름
   spentDate: text("spent_date").notNull(),
   supplyAmount: integer("supply_amount").notNull().default(0),
   vatAmount: integer("vat_amount").notNull().default(0),

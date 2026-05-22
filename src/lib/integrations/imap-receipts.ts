@@ -11,6 +11,7 @@ import { db, schema } from "@/db/client";
 import { eq, and } from "drizzle-orm";
 import { ocrReceipt } from "./ocr";
 import { downloadDriveFile } from "./drive";
+import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
 import AdmZip from "adm-zip";
 import fs from "fs";
 import os from "os";
@@ -418,9 +419,15 @@ export async function importReceiptsFromMail(opts?: {
                   receiptMimeType: mimeType,
                 });
               } else {
+                let autoSessionNo: number | null = subjectSession;
+                if (autoSessionNo == null && AUTO_SESSION_CATEGORIES.has(category)) {
+                  const teamSessions = await db.select({ sessionNo: schema.sessions.sessionNo, scheduledDate: schema.sessions.scheduledDate })
+                    .from(schema.sessions).where(eq(schema.sessions.teamId, teamId));
+                  autoSessionNo = pickNearestSessionNo(spent, teamSessions);
+                }
                 await db.insert(schema.expenses).values({
                   teamId,
-                  sessionNo: subjectSession,
+                  sessionNo: autoSessionNo,
                   spentDate: spent,
                   category,
                   supplyAmount: supply,
