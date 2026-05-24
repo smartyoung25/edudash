@@ -1,5 +1,5 @@
 import { db, schema } from "@/db/client";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 export interface TeamProgress {
   teamId: number;
@@ -107,25 +107,29 @@ export async function getMemberKpiSummary(memberId: number, memberName: string):
 
 export async function getTeamKpiAverage(teamId: number): Promise<{ kpiName: string; targetValue: number; teamAvgPercent: number }[]> {
   const defs = await db.select().from(schema.kpiDefinitions).where(eq(schema.kpiDefinitions.teamId, teamId));
-  const result: { kpiName: string; targetValue: number; teamAvgPercent: number }[] = [];
-  for (const def of defs) {
-    const rows = await db
-      .select()
-      .from(schema.kpiProgress)
-      .where(eq(schema.kpiProgress.kpiDefId, def.id));
-    if (rows.length === 0) {
-      result.push({ kpiName: def.name, targetValue: def.targetValue, teamAvgPercent: 0 });
-      continue;
-    }
+  if (defs.length === 0) return [];
+  const defIds = defs.map((d) => d.id);
+  const allRows = await db
+    .select()
+    .from(schema.kpiProgress)
+    .where(inArray(schema.kpiProgress.kpiDefId, defIds));
+  const byDef = new Map<number, typeof allRows>();
+  for (const r of allRows) {
+    const arr = byDef.get(r.kpiDefId) ?? [];
+    arr.push(r);
+    byDef.set(r.kpiDefId, arr);
+  }
+  return defs.map((def) => {
+    const rows = byDef.get(def.id) ?? [];
+    if (rows.length === 0) return { kpiName: def.name, targetValue: def.targetValue, teamAvgPercent: 0 };
     let sum = 0;
     for (const r of rows) {
       const checkpoints: { round: number; value: number; date: string }[] = JSON.parse(r.midCheckpoints);
       const latest = r.finalValue ?? checkpoints.at(-1)?.value ?? r.baseline;
       sum += Math.min(100, (latest / def.targetValue) * 100);
     }
-    result.push({ kpiName: def.name, targetValue: def.targetValue, teamAvgPercent: Math.round(sum / rows.length) });
-  }
-  return result;
+    return { kpiName: def.name, targetValue: def.targetValue, teamAvgPercent: Math.round(sum / rows.length) };
+  });
 }
 
 export async function getDashboardSummary() {

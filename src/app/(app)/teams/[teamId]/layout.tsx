@@ -31,10 +31,12 @@ export default async function TeamLayout({
     redirect(`/teams/${session.teamId}`);
   }
 
-  const rows = await db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1);
+  const [rows, progress] = await Promise.all([
+    db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1),
+    getTeamProgress(teamId),
+  ]);
   const team = rows[0];
   if (!team) notFound();
-  const progress = await getTeamProgress(teamId);
 
   return (
     <div>
