@@ -8,6 +8,9 @@
 import cron from "node-cron";
 import { syncPublicSheet } from "./gsheets-public";
 import { pollMailbox, updateMailStatus } from "./imap";
+import { importTravelReceiptsFromNotion, isNotionEnabled } from "./notion";
+import { syncDriveTeamStatus } from "./drive-team-status";
+import { runWeeklyStudentReport } from "./weekly-report";
 import { db, schema } from "@/db/client";
 import { eq } from "drizzle-orm";
 
@@ -53,6 +56,41 @@ export function startScheduler() {
       console.log(`[스케줄러] 메일 수집 완료: ${result.message}`);
     } catch (err) {
       console.error("[스케줄러] 메일 수집 오류:", err);
+    }
+  });
+
+  // 노션 출장비 품의서 — 12시간마다
+  cron.schedule("0 6,18 * * *", async () => {
+    if (!isNotionEnabled()) return;
+    console.log("[스케줄러] 노션 출장비 수집 시작...");
+    try {
+      const since = new Date(Date.now() - 14 * 86400000).toISOString();
+      const result = await importTravelReceiptsFromNotion({ since });
+      console.log(`[스케줄러] 노션 수집 완료: ${result.message}`);
+    } catch (err) {
+      console.error("[스케줄러] 노션 수집 오류:", err);
+    }
+  });
+
+  // Drive 전체팀별 운영현황 동기화 — 매일 17:00
+  cron.schedule("0 17 * * *", async () => {
+    console.log("[스케줄러] Drive 운영현황 동기화 시작...");
+    try {
+      const r = await syncDriveTeamStatus();
+      console.log(`[스케줄러] Drive 운영현황 동기화 ${r.ok ? "완료" : "실패"}: ${r.message}`);
+    } catch (err) {
+      console.error("[스케줄러] Drive 운영현황 동기화 오류:", err);
+    }
+  });
+
+  // 주간보고서 자동 생성 — 매주 목요일 20:00
+  cron.schedule("0 20 * * 4", async () => {
+    console.log("[스케줄러] 주간보고서 생성 시작...");
+    try {
+      const r = await runWeeklyStudentReport();
+      console.log(`[스케줄러] 주간보고서 ${r.ok ? "완료" : "실패"}: ${r.message}`);
+    } catch (err) {
+      console.error("[스케줄러] 주간보고서 오류:", err);
     }
   });
 }

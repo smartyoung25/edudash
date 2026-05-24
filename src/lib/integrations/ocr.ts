@@ -113,6 +113,35 @@ export function parseReceipt(text: string): ParsedReceipt {
   // 거래처명·대표자 — "공급자" 섹션 우선
   let vendorName: string | null = null;
   let vendorCeo: string | null = null;
+
+  // 이체결과 확인증(NH Bank 등) — "받는 분" 을 거래처명으로
+  const isTransferConfirm = /이\s*체\s*결\s*과\s*확\s*인\s*증|이\s*체\s*확\s*인\s*증|이\s*체\s*결\s*과/.test(joined);
+  // 이체확인증의 다른 셀 라벨 — 받는 분 다음 라인이 이런 라벨이면 스킵하고 더 뒤 라인 사용
+  const TRANSFER_LABEL_RE = /^(수수료|이체금액|송금금액|이체일시|보내는\s*분|전달메시지|처리정보|출금정보|입금정보|입금계좌은행|입금계좌번호|출금계좌번호|농협처리번호|타행처리번호|처리일|영수증|확인증)\s*$/;
+  if (isTransferConfirm) {
+    for (let i = 0; i < lines.length; i++) {
+      const sameLine = lines[i].match(/받\s*는\s*분\s*[:：]\s*(.+?)$/);
+      if (sameLine && sameLine[1].trim() && !TRANSFER_LABEL_RE.test(sameLine[1].trim())) {
+        vendorName = sameLine[1].trim(); break;
+      }
+      if (/^받\s*는\s*분\s*[:：]?\s*$/.test(lines[i])) {
+        // 다음 4줄 안에서 라벨이 아닌 첫 라인을 vendorName으로
+        for (let k = 1; k <= 4 && i + k < lines.length; k++) {
+          const cand = lines[i + k].trim();
+          if (!cand) continue;
+          if (TRANSFER_LABEL_RE.test(cand)) continue;
+          if (/^\d[\d,\s]*원?\s*$/.test(cand)) continue; // 금액 라인
+          vendorName = cand; break;
+        }
+        if (vendorName) break;
+      }
+    }
+    // 잘린 괄호 보정: "헥토파이낸셜_(주" → "헥토파이낸셜(주)"
+    if (vendorName) {
+      vendorName = vendorName.replace(/_+/g, "").trim();
+      if (/\(\s*주\s*$/.test(vendorName)) vendorName = vendorName.replace(/\(\s*주\s*$/, "(주)");
+    }
+  }
   const supplierIdx = lines.findIndex((l) => /^공급자|^공급\s*자\b/.test(l));
   const receiverIdx = lines.findIndex((l) => /^공급\s*받는\s*자|^공급받는자/.test(l));
   const supplierEnd = receiverIdx > supplierIdx ? receiverIdx : lines.length;
@@ -223,10 +252,10 @@ export function parseReceipt(text: string): ParsedReceipt {
     ) {
       vatAmount = findAmountNear(lines, i);
     }
-    // 합계: "합 계", "받을금액" 등
+    // 합계: "합 계", "받을금액", 택시 "요금" 등
     if (
       totalAmount === null &&
-      /(합\s*계(\s*금\s*액)?|총\s*액|총\s*합\s*계|받\s*을\s*금\s*액|받\s*은\s*금\s*액|결\s*제\s*금\s*액|판\s*매\s*금\s*액|승\s*인\s*금\s*액)/.test(line) &&
+      /(합\s*계(\s*금\s*액)?|총\s*액|총\s*합\s*계|받\s*을\s*금\s*액|받\s*은\s*금\s*액|결\s*제\s*금\s*액|판\s*매\s*금\s*액|승\s*인\s*금\s*액|이\s*체\s*금\s*액|송\s*금\s*금\s*액|^\s*요\s*금\s*[:：]|^\s*요\s*금\s*$)/.test(line) &&
       !/소\s*계/.test(line)
     ) {
       totalAmount = findAmountNear(lines, i);
@@ -241,24 +270,32 @@ export function parseReceipt(text: string): ParsedReceipt {
   }
 
   if (supplyAmount && vatAmount && !totalAmount) totalAmount = supplyAmount + vatAmount;
-  if (totalAmount && !supplyAmount && !vatAmount) {
-    const s = Math.round(totalAmount / 1.1);
-    supplyAmount = s;
-    vatAmount = totalAmount - s;
-  }
-  // 공급가만 빠진 경우: 합계 - 부가세
-  if (!supplyAmount && vatAmount && totalAmount && totalAmount > vatAmount) {
-    supplyAmount = totalAmount - vatAmount;
-  }
-  // 부가세만 빠진 경우: 합계 - 공급가
-  if (supplyAmount && !vatAmount && totalAmount && totalAmount > supplyAmount) {
-    vatAmount = totalAmount - supplyAmount;
-  }
-  // 부가세=합계 이상한 케이스: 부가세가 사실은 합계인 경우 (총액에서 1/11 역산)
-  if (!supplyAmount && vatAmount && totalAmount && totalAmount === vatAmount) {
-    const s = Math.round(totalAmount / 1.1);
-    supplyAmount = s;
-    vatAmount = totalAmount - s;
+
+  // 택시 영수증은 면세업/간이과세 — 요금 전액이 공급가, 부가세 없음
+  const taxiContext = /탑\s*승\s*시\s*간|차\s*량\s*번\s*호|택\s*시|TAXI/i.test(joined);
+  if (taxiContext) {
+    if (totalAmount) { supplyAmount = totalAmount; vatAmount = 0; }
+    else if (supplyAmount) { totalAmount = supplyAmount; vatAmount = 0; }
+  } else {
+    if (totalAmount && !supplyAmount && !vatAmount) {
+      const s = Math.round(totalAmount / 1.1);
+      supplyAmount = s;
+      vatAmount = totalAmount - s;
+    }
+    // 공급가만 빠진 경우: 합계 - 부가세
+    if (!supplyAmount && vatAmount && totalAmount && totalAmount > vatAmount) {
+      supplyAmount = totalAmount - vatAmount;
+    }
+    // 부가세만 빠진 경우: 합계 - 공급가
+    if (supplyAmount && !vatAmount && totalAmount && totalAmount > supplyAmount) {
+      vatAmount = totalAmount - supplyAmount;
+    }
+    // 부가세=합계 이상한 케이스: 부가세가 사실은 합계인 경우 (총액에서 1/11 역산)
+    if (!supplyAmount && vatAmount && totalAmount && totalAmount === vatAmount) {
+      const s = Math.round(totalAmount / 1.1);
+      supplyAmount = s;
+      vatAmount = totalAmount - s;
+    }
   }
 
   // 일자
@@ -342,6 +379,51 @@ export function parseReceipt(text: string): ParsedReceipt {
 export async function ocrReceipt(buffer: Buffer, mimeType?: string): Promise<ParsedReceipt> {
   const text = await extractText(buffer, mimeType);
   return parseReceipt(text);
+}
+
+/**
+ * 기차표(KTX·SRT·새마을·무궁화·ITX) 영수증 자동 감지.
+ */
+export function isTrainReceipt(text: string): boolean {
+  if (!text) return false;
+  const t = text.replace(/\s+/g, " ");
+  let score = 0;
+  if (/KORAIL|코레일|한국철도공사/i.test(t)) score += 3;
+  if (/\bKTX\b|\bSRT\b|새마을|무궁화|ITX/i.test(t)) score += 3;
+  if (/일\s*반\s*실|특\s*실|자유\s*석/.test(t)) score += 2;
+  if (/어른\s*\d+매|어린이\s*\d+매/.test(t)) score += 2;
+  // 출발역 → 도착역 패턴 (한글역명 + 시간)
+  if (/[가-힣]{2,5}\s*\d{1,2}\s*[:：]\s*\d{2}\s*[→\-~]\s*[가-힣]{2,5}\s*\d{1,2}\s*[:：]\s*\d{2}/.test(t)) score += 3;
+  if (/할\s*인\s*[:：]/.test(t)) score += 1;
+  return score >= 4;
+}
+
+/**
+ * 택시 영수증 자동 감지.
+ * 탑승시간/차량번호/거리(Km)/요금 등 택시 영수증 고유 키워드 + 품목 라인 없음.
+ */
+/** 호출 택시·MaaS 사업자 (카카오T, 우티, 티머니모빌리티 등) */
+const RIDE_HAIL_VENDORS = /(카카오\s*모빌리티|카카오\s*T|티머니\s*모빌리티|우티|UT\b|타다|마카롱\s*택시|i\s*M\s*택시|아이엠\s*택시|온다택시|onda)/i;
+
+export function isTaxiReceipt(text: string): boolean {
+  if (!text) return false;
+  const t = text.replace(/\s+/g, " ");
+  let score = 0;
+  if (/탑\s*승\s*시\s*간/.test(t)) score += 3;
+  if (/차\s*량\s*번\s*호/.test(t)) score += 2;
+  if (/승\s*차\s*[/／]\s*기\s*타/.test(t)) score += 2;
+  if (/(\d+(?:\.\d+)?)\s*Km/i.test(t)) score += 2;
+  if (/택\s*시|TAXI/i.test(t)) score += 2;
+  if (/(전남|서울|경기|부산|대구|인천|광주|대전|울산|세종|강원|충북|충남|전북|경북|경남|제주)\s*\d{1,3}[가-힣]\s*\d{4}/.test(t)) score += 2; // 택시 차량 번호판
+  if (RIDE_HAIL_VENDORS.test(t)) score += 4; // 호출 택시 가맹점명
+  // 품목/상품명 라인이 있으면 일반 매장
+  if (/상\s*품\s*명|품\s*목|단\s*가|수\s*량/.test(t)) score -= 3;
+  return score >= 4;
+}
+
+/** vendor_name 단독으로 호출 택시 가맹점인지 판별 (OCR raw text 없이도 사용) */
+export function isRideHailVendor(vendorName?: string | null): boolean {
+  return !!vendorName && RIDE_HAIL_VENDORS.test(vendorName);
 }
 
 // 호환성: 기존 사용처

@@ -9,7 +9,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser, type ParsedMail, type Attachment } from "mailparser";
 import { db, schema } from "@/db/client";
 import { eq, and } from "drizzle-orm";
-import { ocrReceipt } from "./ocr";
+import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
 import { downloadDriveFile } from "./drive";
 import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
 import AdmZip from "adm-zip";
@@ -365,8 +365,9 @@ export async function importReceiptsFromMail(opts?: {
               // 영수증 키워드 없으면 스킵
               if (!RECEIPT_KEYWORDS.test(ocr.rawText)) continue;
               // 금액 정보가 전혀 없으면 스킵
-              const supply = ocr.supplyAmount ?? 0;
-              const vat = ocr.vatAmount ?? 0;
+              const _taxi = isTaxiReceipt(ocr.rawText) || isRideHailVendor(ocr.vendorName);
+              const supply = _taxi ? (ocr.totalAmount ?? ocr.supplyAmount ?? 0) : (ocr.supplyAmount ?? 0);
+              const vat = _taxi ? 0 : (ocr.vatAmount ?? 0);
               const total = ocr.totalAmount ?? supply + vat;
               if (total <= 0) continue;
               // 비현실적으로 큰 금액(>1억) 차단 — 사업자번호를 잘못 잡았을 가능성

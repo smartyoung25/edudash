@@ -217,6 +217,7 @@ export const agencyExpenses = sqliteTable("agency_expenses", {
   docType: text("doc_type", { enum: ["영수증", "거래명세표", "세금계산서"] }).default("영수증"),
   receiptFilePath: text("receipt_file_path"),
   receiptMimeType: text("receipt_mime_type"),
+  dedupKey: text("dedup_key"), // 노션 등 외부 import dedup용 (사용자 비노출)
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

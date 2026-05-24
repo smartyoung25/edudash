@@ -1,0 +1,11 @@
+import { config } from "dotenv";
+config({ path: ".env.local" });
+import fs from "fs";
+const { extractText } = await import("../src/lib/integrations/ocr.ts");
+const file = process.argv[2];
+const buf = fs.readFileSync(file);
+const text = await extractText(buf, file.toLowerCase().endsWith(".pdf") ? "application/pdf" : undefined);
+console.log("---RAW TEXT---");
+console.log(text);
+console.log("---LINES---");
+text.split(/\r?\n/).forEach((l, i) => console.log(`R${i+1}: [${l}]`));

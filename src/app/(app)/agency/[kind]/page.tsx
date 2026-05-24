@@ -92,10 +92,6 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
           </div>
           <div className="ml-auto flex gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">기업카드 </span>
-              <span className="font-bold text-blue-700 tabular-nums">{fmt(corp)}원</span>
-            </div>
-            <div>
               <span className="text-muted-foreground">개인카드 정산필요 </span>
               <span className={cn("font-bold tabular-nums", personalUnreimb > 0 ? "text-orange-600" : "text-muted-foreground")}>{fmt(personalUnreimb)}원</span>
             </div>
@@ -158,11 +154,21 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
                           <div className="font-medium">{e.vendorName || (isPerDiem ? <span className="text-muted-foreground italic">— 일비(계좌이체)</span> : "-")}</div>
                           {e.vendorCeo && <div className="text-xs text-muted-foreground">{e.vendorCeo} · {e.vendorType || "-"}</div>}
                           {e.memo && <div className="text-xs text-muted-foreground italic">{e.memo}</div>}
-                          {e.receiptFilePath && (
-                            <div className="mt-1">
-                              <AgencyReceiptViewer expenseId={e.id} mimeType={e.receiptMimeType} docType={e.docType} />
-                            </div>
-                          )}
+                          <div className="mt-1">
+                            <AgencyReceiptViewer
+                              expenseId={e.id}
+                              mimeType={e.receiptMimeType}
+                              docType={e.docType}
+                              hasReceipt={!!e.receiptFilePath}
+                              initial={{
+                                supplyAmount: e.supplyAmount,
+                                vatAmount: e.vatAmount,
+                                totalAmount: e.totalAmount,
+                                vendorName: e.vendorName,
+                                vendorBizNo: e.vendorBizNo,
+                              }}
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-2 tabular-nums text-xs">{isPerDiem ? <span className="text-muted-foreground">—</span> : (e.vendorBizNo || "-")}</td>
                         <td className="px-3 py-2 text-xs">

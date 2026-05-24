@@ -47,7 +47,6 @@ export async function POST(req: Request) {
   const vat = Number(vatAmount) || 0;
   const total = supply + vat;
 
-  // 영수증 파일 저장
   let receiptFilePath: string | null = null;
   let receiptMimeType: string | null = null;
   if (file) {
@@ -77,6 +76,39 @@ export async function POST(req: Request) {
     receiptMimeType,
   }).returning({ id: schema.agencyExpenses.id });
   return NextResponse.json({ ok: true, id: row.id });
+}
+
+const PATCHABLE = new Set([
+  "spentDate", "supplyAmount", "vatAmount", "totalAmount",
+  "vendorName", "vendorBizNo", "vendorCeo", "vendorType",
+  "cardType", "cardLast4", "payerName",
+  "subcategory", "tripName", "docType", "memo",
+]);
+const NUMERIC = new Set(["supplyAmount", "vatAmount", "totalAmount"]);
+
+export async function PATCH(req: Request) {
+  await requireRole(["admin"]);
+  const body = await req.json();
+  const id = Number(body.id);
+  if (!Number.isFinite(id)) return NextResponse.json({ error: "id 누락" }, { status: 400 });
+
+  const updates: Record<string, any> = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (k === "id" || !PATCHABLE.has(k)) continue;
+    updates[k] = NUMERIC.has(k) ? (Number(v) || 0) : (v === "" ? null : v);
+  }
+  // 공급가/부가세 수정 시 집행액 자동 재계산 (totalAmount 명시값이 없으면)
+  if (("supplyAmount" in updates || "vatAmount" in updates) && !("totalAmount" in updates)) {
+    const [cur] = await db.select().from(schema.agencyExpenses).where(eq(schema.agencyExpenses.id, id)).limit(1);
+    if (!cur) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const s = "supplyAmount" in updates ? updates.supplyAmount : cur.supplyAmount;
+    const v = "vatAmount" in updates ? updates.vatAmount : cur.vatAmount;
+    updates.totalAmount = s + v;
+  }
+  if (Object.keys(updates).length === 0) return NextResponse.json({ ok: true });
+
+  await db.update(schema.agencyExpenses).set(updates).where(eq(schema.agencyExpenses.id, id));
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: Request) {

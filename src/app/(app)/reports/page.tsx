@@ -63,7 +63,11 @@ export default async function ReportsPage() {
                   <tr key={h.id} className="border-b last:border-0">
                     <td className="p-2 font-mono">{h.weekStart}</td>
                     <td className="p-2">{formatDate(h.generatedAt)}</td>
-                    <td className="p-2 font-mono text-xs text-muted-foreground">{h.filePath}</td>
+                    <td className="p-2 font-mono text-xs">
+                      <a href={`/api/reports/${h.id}/download`} className="text-emerald-700 hover:underline">
+                        {h.filePath}
+                      </a>
+                    </td>
                     <td className="p-2"><Badge variant="success">생성완료</Badge></td>
                   </tr>
                 ))}
