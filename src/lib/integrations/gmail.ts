@@ -53,7 +53,11 @@ function* walkParts(part: GmailPart | undefined): Generator<GmailPart> {
   }
 }
 
-export async function pollMailbox(): Promise<MailSyncResult> {
+export async function pollMailbox(opts?: {
+  fromEmail?: string;
+  sinceDays?: number;
+  includeRead?: boolean;
+}): Promise<MailSyncResult> {
   if (!isMailEnabled()) {
     return { ok: false, message: "Gmail 자격증명 미설정 (GOOGLE_SERVICE_ACCOUNT_JSON / GMAIL_USER)" };
   }
@@ -65,11 +69,20 @@ export async function pollMailbox(): Promise<MailSyncResult> {
   let newAttachments = 0;
   let unclassified = 0;
 
+  // 쿼리 조립: 기본은 is:unread has:attachment (cron 호환).
+  // opts 들어오면 includeRead 가 true 면 is:unread 제거, fromEmail/sinceDays 필터 추가.
+  const queryParts: string[] = ["has:attachment"];
+  if (!opts?.includeRead) queryParts.unshift("is:unread");
+  if (opts?.fromEmail) queryParts.push(`from:${opts.fromEmail}`);
+  if (opts?.sinceDays) queryParts.push(`newer_than:${opts.sinceDays}d`);
+  const q = queryParts.join(" ");
+  const skipMarkRead = !!opts?.includeRead;
+
   try {
     resetClassifierCache();
     const list = await gmail.users.messages.list({
       userId,
-      q: "is:unread has:attachment",
+      q,
       maxResults: MAX_MESSAGES_PER_POLL,
     });
     const messages = list.data.messages ?? [];
@@ -102,7 +115,9 @@ export async function pollMailbox(): Promise<MailSyncResult> {
         .limit(1);
       if (existing.length > 0) {
         // already processed in a prior run — still mark read so we stop seeing it
-        await gmail.users.messages.modify({ userId, id: ref.id, requestBody: { removeLabelIds: ["UNREAD"] } });
+        if (!skipMarkRead) {
+          await gmail.users.messages.modify({ userId, id: ref.id, requestBody: { removeLabelIds: ["UNREAD"] } });
+        }
         continue;
       }
 
@@ -201,11 +216,13 @@ export async function pollMailbox(): Promise<MailSyncResult> {
       newMails++;
 
       // Mark as read so subsequent polls skip it
-      await gmail.users.messages.modify({
-        userId,
-        id: ref.id,
-        requestBody: { removeLabelIds: ["UNREAD"] },
-      });
+      if (!skipMarkRead) {
+        await gmail.users.messages.modify({
+          userId,
+          id: ref.id,
+          requestBody: { removeLabelIds: ["UNREAD"] },
+        });
+      }
     }
 
     return {

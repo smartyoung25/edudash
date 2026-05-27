@@ -64,6 +64,42 @@ const DATE_PATTERNS = [
   /(\d{4})(\d{2})(\d{2})/,
 ];
 
+// ───────── 금액 후보에서 제외할 라인 패턴 ─────────
+// 카드번호·TID·승인번호·전화·계좌·식별번호·바코드 등은 모두 큰 숫자를 포함하지만 금액이 아님.
+// 한 줄에 키워드가 있으면 그 줄에선 어떤 숫자도 금액으로 잡지 않음.
+const NON_AMOUNT_PATTERNS: RegExp[] = [
+  /카\s*드\s*번\s*호/,                                // 카드번호
+  /^신\s*용\s*카\s*드(\s|$)/,                           // "신용카드 …"  단독 헤더
+  /(\d{4}[-\s*]{1,3}){2,3}\d{0,4}\*?/,                  // 9430-0329-****-790* 식 카드번호 노출
+  /\*{4,}[\s-]?\d{2,4}/,                                // ****1234, ****-1234
+  /^T\s*I\s*D\s*[:：]/i,                                // TID:2771751
+  /가\s*맹\s*점?\s*N?o\.?\s*[:：]?/i,                    // 가맹No / 가맹점번호
+  /가\s*맹\s*점?\s*번\s*호/,
+  /매\s*장\s*번\s*호/,
+  /^승\s*인\s*번\s*호\s*[:：]?/,                         // 승인번호 65682739
+  /전\s*표\s*N?o\.?\s*[:：]?/i,                          // 전표No 505-0193
+  /POS[\s-]?\d/i,                                       // POS-01, POS 47347
+  /거\s*래\s*N?o\.?\s*[:：]?/i,                          // 거래No
+  /\b\d{3}[-\s]?\d{2}[-\s]?\d{5}\b/,                    // 사업자등록번호 333-44-55555 (별도 추출됨)
+  /\b0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}\b/,               // 02-1234-5678, 010-...
+  /^T\s*e\s*l\s*[:：.]/i,                                // Tel:
+  /식\s*별\s*번\s*호/,                                  // 현금영수증 식별번호
+  /처\s*리\s*번\s*호/,                                  // 농협처리번호 / 타행처리번호
+  /^\d{12,}$/,                                          // 바코드/QR 등 12자리 이상 연속숫자
+  /\d{2,4}[-\s]\d{2,4}[-\s]\d{4,8}/,                    // 계좌번호 110-123-456789
+  /\b\d{6}\s*[-]\s*\d{7}\b/,                            // 주민등록번호 610423-1953817
+  /주\s*민\s*등\s*록\s*번\s*호/,                          // 라벨
+  /계\s*좌\s*번\s*호/,                                  // 라벨
+];
+
+// "수당 지급 확인서" 등 강사비 양식 인식
+const ALLOWANCE_FORM_RE = /수\s*당\s*지\s*급\s*확\s*인\s*서|강\s*사\s*수\s*당\s*지\s*급|수당지급|강사비\s*지급/;
+
+function isNonAmountLine(line: string): boolean {
+  for (const re of NON_AMOUNT_PATTERNS) if (re.test(line)) return true;
+  return false;
+}
+
 function parseAmount(line: string): number | null {
   const m = line.match(/([\d,]{3,})\s*(?:원)?/);
   if (!m) return null;
@@ -71,18 +107,21 @@ function parseAmount(line: string): number | null {
   return isFinite(n) ? n : null;
 }
 
-/** 다음 라인까지 보면서 숫자 잡기 */
-function findAmountNear(lines: string[], idx: number): number | null {
+/** 다음 라인까지 보면서 숫자 잡기 — 제외 라인은 건너뜀 */
+function findAmountNear(lines: string[], idx: number, excluded: Set<number>): number | null {
   const sameLine = lines[idx];
-  // 같은 라인에서 키워드 뒤의 숫자
-  const afterKeyword = sameLine.replace(/.*?(공급가액|공급가|부가세과세\s*물품가액|과세\s*물품가액|과세\s*대상\s*물품가액|과세대상금액|과세\s*물품|부가\s*가치세|부가세|세액|합\s*계|총\s*액|총\s*합계|받을\s*금액|결제\s*금액|판매\s*금액|승인금액)\s*[:：]?/, "");
-  const m1 = afterKeyword.match(/([\d,]{3,})/);
-  if (m1) {
-    const n = parseInt(m1[1].replace(/,/g, ""), 10);
-    if (isFinite(n) && n >= 100) return n;
+  // 같은 라인이 제외 대상이면 인접 라인만 본다
+  if (!excluded.has(idx)) {
+    const afterKeyword = sameLine.replace(/.*?(공급가액|공급가|부가세과세\s*물품가액|과세\s*물품가액|과세\s*대상\s*물품가액|과세대상금액|과세\s*물품|부가\s*가치세|부가세|세액|합\s*계|총\s*액|총\s*합계|받을\s*금액|결제\s*금액|판매\s*금액|승인금액|이체금액|송금금액)\s*[:：]?/, "");
+    const m1 = afterKeyword.match(/([\d,]{3,})/);
+    if (m1) {
+      const n = parseInt(m1[1].replace(/,/g, ""), 10);
+      if (isFinite(n) && n >= 100) return n;
+    }
   }
-  // 다음 2줄에서 숫자
+  // 다음 2줄에서 숫자 (제외 라인 skip)
   for (let i = idx + 1; i < Math.min(idx + 3, lines.length); i++) {
+    if (excluded.has(i)) continue;
     const m = lines[i].match(/^([\d,]{3,})$/) || lines[i].match(/([\d,]{4,})/);
     if (m) {
       const n = parseInt(m[1].replace(/,/g, ""), 10);
@@ -95,6 +134,12 @@ function findAmountNear(lines: string[], idx: number): number | null {
 export function parseReceipt(text: string): ParsedReceipt {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const joined = lines.join("\n");
+
+  // 금액 후보에서 제외할 라인 인덱스 (카드번호·TID·승인번호·전화·계좌·식별번호 등)
+  const excludedForAmount = new Set<number>();
+  for (let i = 0; i < lines.length; i++) {
+    if (isNonAmountLine(lines[i])) excludedForAmount.add(i);
+  }
 
   // 사업자등록번호 — 첫 번째는 공급자, 두 번째는 공급받는자인 경우가 많음
   const bizMatches: { idx: number; value: string }[] = [];
@@ -230,6 +275,48 @@ export function parseReceipt(text: string): ParsedReceipt {
   let vatAmount: number | null = null;
   let totalAmount: number | null = null;
 
+  // ───────── 강사비 양식 (수당 지급 확인서, 서식17 등) 별도 처리 ─────────
+  // 상단에 [강사비 | 교통비 | 숙박비 | 합계] 4열 표가 있고, 그 아래 값 행에 금액이 들어감.
+  // OCR이 보통 "강사비\n교통비\n숙박비\n합계\n900,000\n원\n900,000" 식으로 평탄화함.
+  if (ALLOWANCE_FORM_RE.test(joined)) {
+    // "합계" 라벨 줄을 찾고, 이후 30줄 내에서 "원" 이 붙은 가장 큰 금액(또는 단독 숫자) 들을 후보로
+    const totalIdx = lines.findIndex((l) => /^합\s*계\s*$/.test(l) || /^합\s*계\s*[:：]/.test(l));
+    const lectureFeeCandidates: number[] = [];
+    const totalCandidates: number[] = [];
+    if (totalIdx >= 0) {
+      for (let k = totalIdx + 1; k < Math.min(totalIdx + 30, lines.length); k++) {
+        if (excludedForAmount.has(k)) continue;
+        const matches = [...lines[k].matchAll(/([\d,]{4,})\s*원?/g)];
+        for (const m of matches) {
+          const n = parseInt(m[1].replace(/,/g, ""), 10);
+          if (isFinite(n) && n >= 10000 && n <= 50_000_000) totalCandidates.push(n);
+        }
+      }
+    }
+    // 강사비 라벨 줄도 탐색 (강사비만 적힌 경우)
+    const lecIdx = lines.findIndex((l) => /^강\s*사\s*(비|료|수\s*당)$/.test(l));
+    if (lecIdx >= 0) {
+      for (let k = lecIdx + 1; k < Math.min(lecIdx + 10, lines.length); k++) {
+        if (excludedForAmount.has(k)) continue;
+        const m = lines[k].match(/^([\d,]{4,})\s*원?\s*$/);
+        if (m) {
+          const n = parseInt(m[1].replace(/,/g, ""), 10);
+          if (isFinite(n) && n >= 10000 && n <= 50_000_000) lectureFeeCandidates.push(n);
+        }
+      }
+    }
+    if (totalCandidates.length > 0) {
+      totalAmount = Math.max(...totalCandidates);
+      // 강사비/수당은 면세 (간이과세 아님 — 원천세 별도) → supply=total, vat=0
+      supplyAmount = totalAmount;
+      vatAmount = 0;
+    } else if (lectureFeeCandidates.length > 0) {
+      totalAmount = Math.max(...lectureFeeCandidates);
+      supplyAmount = totalAmount;
+      vatAmount = 0;
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     // 공급가액 변형 — 모든 키워드에 \s* 허용 (OCR에서 띄어쓰기 들어가는 케이스)
@@ -242,7 +329,7 @@ export function parseReceipt(text: string): ParsedReceipt {
         /과\s*세\s*대\s*상\s*금\s*액/.test(line)) &&
       !/면\s*세/.test(line)
     ) {
-      supplyAmount = findAmountNear(lines, i);
+      supplyAmount = findAmountNear(lines, i, excludedForAmount);
     }
     // 부가세: "부 가 세" 같이 글자 사이 공백도 OK
     if (
@@ -250,7 +337,7 @@ export function parseReceipt(text: string): ParsedReceipt {
       (/부\s*가\s*가\s*치\s*세/.test(line) || /부\s*가\s*세(?!\s*과)/.test(line) || /세\s*액/.test(line) || /\bVAT\b/i.test(line)) &&
       !/(영\s*세\s*율|면\s*세)/.test(line)
     ) {
-      vatAmount = findAmountNear(lines, i);
+      vatAmount = findAmountNear(lines, i, excludedForAmount);
     }
     // 합계: "합 계", "받을금액", 택시 "요금" 등
     if (
@@ -258,15 +345,23 @@ export function parseReceipt(text: string): ParsedReceipt {
       /(합\s*계(\s*금\s*액)?|총\s*액|총\s*합\s*계|받\s*을\s*금\s*액|받\s*은\s*금\s*액|결\s*제\s*금\s*액|판\s*매\s*금\s*액|승\s*인\s*금\s*액|이\s*체\s*금\s*액|송\s*금\s*금\s*액|^\s*요\s*금\s*[:：]|^\s*요\s*금\s*$)/.test(line) &&
       !/소\s*계/.test(line)
     ) {
-      totalAmount = findAmountNear(lines, i);
+      totalAmount = findAmountNear(lines, i, excludedForAmount);
     }
   }
 
   // 합계 폴백: 두 번째로 큰 숫자가 합계인 경우
   if (!totalAmount) {
-    const allAmounts = lines.flatMap((l) => Array.from(l.matchAll(/([\d,]{4,})/g)).map((m) => parseInt(m[1].replace(/,/g, ""), 10)))
-      .filter((n) => isFinite(n) && n >= 1000 && n < 100_000_000);
+    // 폴백: 라벨 매칭 모두 실패 시에만 — 제외 라인(카드번호·TID 등) 제외
+    const safeLines = lines.filter((_, i) => !excludedForAmount.has(i));
+    const allAmounts = safeLines
+      .flatMap((l) => Array.from(l.matchAll(/([\d,]{4,})/g)).map((m) => parseInt(m[1].replace(/,/g, ""), 10)))
+      // 합리적 한도 5,000,000원 — 폴백은 모호하므로 더 보수적으로
+      .filter((n) => isFinite(n) && n >= 1000 && n < 5_000_000);
     if (allAmounts.length) totalAmount = Math.max(...allAmounts);
+  }
+  // 최종 안전망: 1억 초과는 오인식으로 보고 폐기
+  if (totalAmount !== null && totalAmount >= 100_000_000) {
+    totalAmount = null; supplyAmount = null; vatAmount = null;
   }
 
   if (supplyAmount && vatAmount && !totalAmount) totalAmount = supplyAmount + vatAmount;
@@ -298,13 +393,38 @@ export function parseReceipt(text: string): ParsedReceipt {
     }
   }
 
-  // 일자
+  // 일자 — 줄 단위 제외는 안 함 (카드번호 같은 줄에 정상 날짜가 함께 있을 수 있음).
+  // 대신 연도 sanity check (2024 ~ today+1) 로 카드번호의 9430·4140 같은 4자리가 연도로 잡히는 것 차단.
+  const thisYear = new Date().getFullYear();
+  const YEAR_MIN = 2024;
+  const YEAR_MAX = thisYear + 1;
   let spentDate: string | null = null;
-  for (const re of DATE_PATTERNS) {
-    const m = joined.match(re);
-    if (m) {
-      const y = m[1], mo = String(m[2]).padStart(2, "0"), d = String(m[3]).padStart(2, "0");
-      spentDate = `${y}-${mo}-${d}`;
+  outer: for (const line of lines) {
+    for (const re of DATE_PATTERNS) {
+      // 한 줄에 여러 매치가 있을 수 있어 모두 본다 (카드번호 매치 옆에 정상 날짜가 따로 있는 케이스)
+      const all = [...line.matchAll(new RegExp(re, "g"))];
+      for (const m of all) {
+        const y = parseInt(m[1], 10);
+        const mo = parseInt(m[2], 10);
+        const d = parseInt(m[3], 10);
+        if (!isFinite(y) || y < YEAR_MIN || y > YEAR_MAX) continue;
+        if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+        spentDate = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        break outer;
+      }
+    }
+  }
+  // 2자리 연도 폴백: "거래일시 26/02/26" 같은 케이스
+  if (!spentDate) {
+    for (const line of lines) {
+      const m = line.match(/(?:^|[^\d])(\d{2})[.\-\/]\s*(\d{1,2})[.\-\/]\s*(\d{1,2})(?:[^\d]|$)/);
+      if (!m) continue;
+      const y2 = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10);
+      const d = parseInt(m[3], 10);
+      if (y2 < 20 || y2 > 35) continue; // 2020~2035
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+      spentDate = `20${String(y2).padStart(2, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       break;
     }
   }

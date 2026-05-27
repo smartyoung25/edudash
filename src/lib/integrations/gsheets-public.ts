@@ -61,6 +61,14 @@ function parseDate(val: ExcelJS.CellValue): string | null {
     return `2026-${month}-${day}`;
   }
 
+  // "M.D" / "M.DD" / "MM.DD" 패턴 (예: "3.03", "03.11") — 앞의 점 허용 (".03.11")
+  const dot = s.replace(/^\.+/, "").match(/^(\d{1,2})\.(\d{1,2})$/);
+  if (dot) {
+    const month = dot[1].padStart(2, "0");
+    const day = dot[2].padStart(2, "0");
+    return `2026-${month}-${day}`;
+  }
+
   return null;
 }
 
@@ -74,11 +82,15 @@ function inferProduct(sheetName: string): "감귤" | "딸기" | "배" | "토마�
   return "배";
 }
 
-/** 시트명 → DB 팀 ID 매칭 (없으면 자동 생성) */
-async function matchOrCreateTeam(
+/**
+ * 시트명 → DB 팀 ID 매칭. 매칭 실패 시 null.
+ * 자동 생성하지 않음 — 미매칭 시트는 호출부에서 skip + 경고 로그.
+ * team_aliases 테이블도 조회한다.
+ */
+export async function matchOrCreateTeam(
   sheetName: string,
-  teams: { id: number; name: string; product: string }[]
-): Promise<number> {
+  teams: { id: number; name: string; product: string }[],
+): Promise<number | null> {
   const norm = (s: string) => s.replace(/\s/g, "").toLowerCase();
   const sn = norm(sheetName);
 
@@ -93,31 +105,20 @@ async function matchOrCreateTeam(
     if (sn.includes(tn) || tn.includes(sn)) return t.id;
   }
 
-  // 3. 없으면 새 팀 자동 생성
-  const product = inferProduct(sheetName);
-  const inserted = await db
-    .insert(schema.teams)
-    .values({
-      name: sheetName,
-      product,
-      cohort: sheetName,
-      courseName: sheetName,
-      region: "미입력",
-      headCount: 0,
-      totalSessions: 15,
-      endDate: "2026-12-31",
-      professorName: "미입력",
-    })
-    .returning({ id: schema.teams.id });
+  // 3. team_aliases 조회
+  const aliases = await db
+    .select({ teamId: schema.teamAliases.teamId, alias: schema.teamAliases.alias })
+    .from(schema.teamAliases);
+  for (const a of aliases) {
+    if (norm(a.alias) === sn) return a.teamId;
+  }
 
-  const newId = inserted[0].id;
-  // 연동 상태 행 추가
-  teams.push({ id: newId, name: sheetName, product });
-  return newId;
+  // 4. 매칭 실패 — 자동 생성 금지
+  return null;
 }
 
 /** 시트 1장을 파싱해 세션 데이터 배열 반환 */
-function parseSheet(ws: ExcelJS.Worksheet): {
+export function parseSheet(ws: ExcelJS.Worksheet): {
   sessionNo: number;
   reportDate: string;
   subject: string;
@@ -203,6 +204,11 @@ export async function syncPublicSheet(spreadsheetId: string): Promise<SheetSyncR
   for (const ws of wb.worksheets) {
     const sheetName = ws.name.trim();
     const teamId = await matchOrCreateTeam(sheetName, dbTeams);
+    if (teamId == null) {
+      console.warn(`[시트] 매칭 실패 — 무시: "${sheetName}" (DB 팀 또는 alias 등록 필요)`);
+      teamResults.push({ name: sheetName, sessions: 0, skipped: 0 });
+      continue;
+    }
 
     const sessions = parseSheet(ws);
     let upserted = 0;
