@@ -28,6 +28,7 @@ export const env = {
   get EXPENSE_SHEETS_SPREADSHEET_ID() { return read("EXPENSE_SHEETS_SPREADSHEET_ID"); },
   get DRIVE_ROOT_FOLDER_ID() { return read("DRIVE_ROOT_FOLDER_ID"); },
   get GMAIL_USER() { return read("GMAIL_USER"); },
+  get PROGRESS_ALERT_TO() { return read("PROGRESS_ALERT_TO", "bsy@iiam.co.kr"); },
 };
 
 export function isSheetsEnabled() {

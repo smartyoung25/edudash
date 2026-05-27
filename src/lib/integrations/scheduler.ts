@@ -11,6 +11,7 @@ import { pollMailbox, updateMailStatus } from "./imap";
 import { importTravelReceiptsFromNotion, isNotionEnabled } from "./notion";
 import { syncDriveTeamStatus } from "./drive-team-status";
 import { runWeeklyStudentReport } from "./weekly-report";
+import { checkAndSendProgressAlerts } from "./progress-alert";
 import { db, schema } from "@/db/client";
 import { eq } from "drizzle-orm";
 
@@ -91,6 +92,17 @@ export function startScheduler() {
       console.log(`[스케줄러] 주간보고서 ${r.ok ? "완료" : "실패"}: ${r.message}`);
     } catch (err) {
       console.error("[스케줄러] 주간보고서 오류:", err);
+    }
+  });
+
+  // 진행률 50%·90% 임계치 알림 — 매일 09:00
+  cron.schedule("0 9 * * *", async () => {
+    console.log("[스케줄러] 진행률 알림 평가 시작...");
+    try {
+      const r = await checkAndSendProgressAlerts();
+      console.log(`[스케줄러] 진행률 알림 ${r.ok ? "완료" : "오류포함"}: ${r.message}`);
+    } catch (err) {
+      console.error("[스케줄러] 진행률 알림 오류:", err);
     }
   });
 }

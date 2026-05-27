@@ -294,6 +294,22 @@ export const auditLogs = sqliteTable("audit_logs", {
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// ───────── 진행률 알림 (50%·90% 도달 시 1회) ─────────
+
+export const progressNotifications = sqliteTable(
+  "progress_notifications",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+    threshold: integer("threshold").notNull(), // 50 | 90
+    sentAt: text("sent_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    progressPercent: integer("progress_percent").notNull(),
+  },
+  (t) => ({
+    uq: uniqueIndex("progress_notif_team_threshold_uq").on(t.teamId, t.threshold),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Member = typeof members.$inferSelect;
