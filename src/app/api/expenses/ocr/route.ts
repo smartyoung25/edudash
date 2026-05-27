@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ocrReceipt, isOcrEnabled } from "@/lib/integrations/ocr";
+import { classifyExpense } from "@/lib/integrations/expense-classifier";
 import { requireAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -20,7 +21,12 @@ export async function POST(req: Request) {
 
   try {
     const parsed = await ocrReceipt(buf, mime);
-    return NextResponse.json({ ok: true, parsed });
+    const classification = classifyExpense({
+      text: parsed.rawText,
+      vendorName: parsed.vendorName,
+      spentTime: parsed.spentTime,
+    });
+    return NextResponse.json({ ok: true, parsed, classification });
   } catch (err: any) {
     console.error("[OCR] 실패", err);
     return NextResponse.json({ error: err?.message || "OCR 처리 실패" }, { status: 500 });

@@ -172,40 +172,15 @@ async function pickTeam(fromAddress: string, subject: string, body: string): Pro
   return matched[0].id; // fallback
 }
 
-/** 식당 업종 키워드 (시간과 결합해서 식대 분류) */
-const RESTAURANT_RE = /(식당|식사|음식|밥|국밥|구이|찌개|국수|면|한식|중식|일식|양식|뷔페|치킨|버거|돈까스|족발|보쌈|삼겹|갈비|회|초밥|짜장|짬뽕|볶음|덮밥|비빔|김밥|분식|떡볶이|순대|만두|쌀국수|우동|라면|피자|파스타|스테이크|샐러드|맥도날드|롯데리아|버거킹|kfc|bbq|교촌|네네|굽네|훌랄라|푸드|수산|횟집|포차|주점|선술집|장어|꼬치|닭갈비|냉면|곱창|막창|냉면|쌈밥|돼지국밥|설렁탕|곰탕|순두부|콩나물|짜파게티|불고기|찜닭|돼지|소고기|닭|오리|곱|장|샤브)/;
+import { classifyExpense, type ExpenseCategory } from "./expense-classifier";
 
-const CAFE_RE = /(카페|커피|coffee|cafe|음료|아이스|아메리카노|라떼|에스프레소|스타벅스|이디야|투썸|메가커피|컴포즈|빽다방|할리스|폴바셋|블루보틀|다과|간식|쿠키|빵|베이커리|디저트|파리바게뜨|뚜레쥬르|샌드위치|토스트|와플|마카롱|케이크|크로플|쥬스|스무디|밀크|티)/;
-
-/** OCR 결과에서 카테고리 추정 (시간보다 키워드 우선) */
+/** OCR 결과에서 카테고리 추정 — 공유 분류기 호출 (강사비 카테고리는 임포트 흐름에선 별도 처리되지 않으므로 식대 등으로 강등 없이 그대로 전달) */
 function guessCategory(
   text: string,
   vendorName: string | null,
   spentTime: string | null
-): "식대" | "다과" | "재료비" | "숙박" | "임차비" | "출장비" | "기타" {
-  const hay = (text + " " + (vendorName ?? "")).toLowerCase();
-  const hour = spentTime ? parseInt(spentTime.split(":")[0], 10) : null;
-
-  // 1. 항공/교통 → 출장비 (강력 — 시간 무관)
-  if (/(항공|airline|asiana|korean\s*air|에어부산|제주항공|진에어|이스타|티웨이|jeju\s*air|kobus|고속버스|시외버스|ktx|srt|기차|티켓|코레일|카카오모빌리티|티머니|t-money|택시|렌터카|렌트카|주유|주유소|gs칼텍스|sk에너지|에쓰오일|s-oil|hyundai oilbank|현대오일뱅크|하이패스|통행료|주차)/i.test(hay)) return "출장비";
-  // 2. 숙박 (시간 무관)
-  if (/(호텔|숙박|모텔|펜션|리조트|게스트|숙소|민박|콘도|hotel|inn|stay\b|guesthouse)/i.test(hay)) return "숙박";
-  // 3. 임차비
-  if (/(임차|대여|렌터|차량.*대여|버스대여|렌트|회의실|장소.*대여|공간.*대여)/i.test(hay)) return "임차비";
-  // 4. 재료비
-  if (/(교재|용품|문구|재료|책|복사|인쇄|문구점|다이소|이마트|코스트코|홈플러스|마트|롯데마트|온누리|사무용품|프린트|토너|잉크)/.test(hay)) return "재료비";
-  // 5. 카페/다과
-  if (CAFE_RE.test(hay)) return "다과";
-  // 6. 식당류
-  if (RESTAURANT_RE.test(hay)) return "식대";
-  // 7. 시간 기반 fallback — 식사 시간대(아침/점심/저녁)에 결제된 영수증 → 식대
-  //    조건: 항공/숙박/마트 등 명확한 다른 업종 키워드 없을 때만
-  if (hour !== null) {
-    if ((hour >= 7 && hour <= 9) || (hour >= 11 && hour <= 14) || (hour >= 17 && hour <= 21)) {
-      return "식대";
-    }
-  }
-  return "기타";
+): ExpenseCategory {
+  return classifyExpense({ text, vendorName, spentTime }).category;
 }
 
 export async function importReceiptsFromMail(opts?: {

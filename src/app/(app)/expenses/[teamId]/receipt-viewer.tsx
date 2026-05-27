@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ImageIcon, FileText, Save, Loader2, ImageOff, Pencil } from "lucide-react";
+import { ImageIcon, FileText, Save, Loader2, ImageOff, Pencil, Sparkles } from "lucide-react";
+import { classifyExpense } from "@/lib/integrations/expense-classifier";
 
 const CATEGORIES = ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
 const DOC_TYPES = ["영수증", "거래명세표", "세금계산서"] as const;
@@ -59,6 +60,17 @@ export function ReceiptViewer({
     memo: initial?.memo ?? "",
     docType: initial?.docType ?? "영수증",
   }));
+
+  // vendorName + memo만으로 룰 기반 카테고리 추천 (OCR 재실행 없음)
+  const suggestion = (() => {
+    const vendor = form.vendorName?.trim();
+    const memo = form.memo?.trim();
+    if (!vendor && !memo) return null;
+    const r = classifyExpense({ text: memo || "", vendorName: vendor || null });
+    if (r.confidence < 0.5) return null;
+    if (r.category === form.category) return null; // 이미 같으면 표시 안 함
+    return r;
+  })();
 
   function setNum(key: "supplyAmount" | "vatAmount" | "totalAmount", v: string) {
     const n = v === "" ? 0 : Math.max(0, Math.floor(Number(v) || 0));
@@ -144,6 +156,17 @@ export function ReceiptViewer({
                         {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                    {suggestion && (
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, category: suggestion.category }))}
+                        title={suggestion.reasons.join(" · ")}
+                        className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-700 hover:text-amber-900 hover:underline underline-offset-2"
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        추천: {suggestion.category} ({Math.round(suggestion.confidence * 100)}%) — 클릭 적용
+                      </button>
+                    )}
                   </div>
                 </div>
 
