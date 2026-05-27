@@ -132,7 +132,24 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
                   <div className="text-xs font-medium truncate">{e.vendorName || "(거래처 미인식)"}</div>
                   <div className="text-xs text-muted-foreground">{formatDate(e.spentDate)}</div>
                   <div className="text-sm font-bold tabular-nums">{fmt(e.totalAmount)}원</div>
-                  <ReceiptViewer expenseId={e.id} mimeType={e.receiptMimeType} triggerLabel="크게 보기" />
+                  <ReceiptViewer
+                    expenseId={e.id}
+                    mimeType={e.receiptMimeType}
+                    triggerLabel="크게 보기"
+                    initial={{
+                      spentDate: e.spentDate,
+                      category: e.category,
+                      vendorName: e.vendorName,
+                      vendorCeo: e.vendorCeo,
+                      vendorBizNo: e.vendorBizNo,
+                      vendorType: e.vendorType,
+                      supplyAmount: e.supplyAmount,
+                      vatAmount: e.vatAmount,
+                      totalAmount: e.totalAmount,
+                      memo: e.memo,
+                      docType: e.docType,
+                    }}
+                  />
                 </div>
               </Card>
             ))}

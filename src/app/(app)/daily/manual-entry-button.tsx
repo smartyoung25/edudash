@@ -11,13 +11,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PlusCircle } from "lucide-react";
 import type { Team } from "@/db/schema";
 
-export function ManualEntryButton({ teams }: { teams: Team[] }) {
+export function ManualEntryButton({
+  teams,
+  defaultTeamId,
+  defaultSessionNo,
+  defaultSubject,
+  triggerLabel,
+  triggerVariant,
+  triggerSize,
+}: {
+  teams: Team[];
+  defaultTeamId?: number;
+  defaultSessionNo?: number;
+  defaultSubject?: string;
+  triggerLabel?: string;
+  triggerVariant?: "default" | "outline" | "secondary";
+  triggerSize?: "sm" | "default";
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [teamId, setTeamId] = useState<string>("");
+  const [teamId, setTeamId] = useState<string>(defaultTeamId ? String(defaultTeamId) : "");
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
-  const [sessionNo, setSessionNo] = useState<string>("1");
-  const [subject, setSubject] = useState("");
+  const [sessionNo, setSessionNo] = useState<string>(defaultSessionNo ? String(defaultSessionNo) : "1");
+  const [subject, setSubject] = useState(defaultSubject ?? "");
   const [attended, setAttended] = useState<string>("0");
   const [absent, setAbsent] = useState<string>("0");
   const [absentNames, setAbsentNames] = useState("");
@@ -27,7 +43,9 @@ export function ManualEntryButton({ teams }: { teams: Team[] }) {
   const [isPending, startTransition] = useTransition();
 
   function reset() {
-    setTeamId(""); setSessionNo("1"); setSubject("");
+    setTeamId(defaultTeamId ? String(defaultTeamId) : "");
+    setSessionNo(defaultSessionNo ? String(defaultSessionNo) : "1");
+    setSubject(defaultSubject ?? "");
     setAttended("0"); setAbsent("0"); setAbsentNames(""); setAbsentReason(""); setNotes("");
     setError(null);
   }
@@ -64,9 +82,9 @@ export function ManualEntryButton({ teams }: { teams: Team[] }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">
+        <Button size={triggerSize ?? "sm"} variant={triggerVariant ?? "default"}>
           <PlusCircle className="h-4 w-4" />
-          수동 입력
+          {triggerLabel ?? "수동 입력"}
         </Button>
       </DialogTrigger>
       <DialogContent>

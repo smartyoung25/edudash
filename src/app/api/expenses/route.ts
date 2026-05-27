@@ -51,6 +51,54 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, id: row.id });
 }
 
+export async function PATCH(req: Request) {
+  const session = await requireAuth();
+  const body = await req.json();
+  const id = Number(body.id);
+  if (!id) return NextResponse.json({ error: "id 누락" }, { status: 400 });
+
+  // 권한 — team-scoped 역할은 자기 팀 expense만
+  const existingRows = await db
+    .select({ teamId: schema.expenses.teamId })
+    .from(schema.expenses)
+    .where(eq(schema.expenses.id, id))
+    .limit(1);
+  if (!existingRows[0]) return NextResponse.json({ error: "찾을 수 없음" }, { status: 404 });
+  if (isTeamScoped(session.role!) && existingRows[0].teamId !== session.teamId) {
+    return NextResponse.json({ error: "권한 없음" }, { status: 403 });
+  }
+
+  // 허용 필드만 화이트리스트
+  const allowed: Partial<typeof schema.expenses.$inferInsert> = {};
+  if (body.spentDate !== undefined) allowed.spentDate = String(body.spentDate);
+  if (body.category !== undefined) allowed.category = body.category;
+  if (body.vendorName !== undefined) allowed.vendorName = body.vendorName || null;
+  if (body.vendorCeo !== undefined) allowed.vendorCeo = body.vendorCeo || null;
+  if (body.vendorBizNo !== undefined) allowed.vendorBizNo = body.vendorBizNo || null;
+  if (body.vendorType !== undefined) allowed.vendorType = body.vendorType || null;
+  if (body.memo !== undefined) allowed.memo = body.memo || null;
+  if (body.docType !== undefined) {
+    allowed.docType = (body.docType === "거래명세표" || body.docType === "세금계산서") ? body.docType : "영수증";
+  }
+  // 금액: supply+vat 들어오면 total은 합으로 재계산. total 단독 전달도 허용 (수기 강제 입력)
+  if (body.supplyAmount !== undefined || body.vatAmount !== undefined) {
+    const supply = Number(body.supplyAmount) || 0;
+    const vat = Number(body.vatAmount) || 0;
+    allowed.supplyAmount = supply;
+    allowed.vatAmount = vat;
+    allowed.totalAmount = (body.totalAmount !== undefined ? Number(body.totalAmount) : supply + vat) || 0;
+  } else if (body.totalAmount !== undefined) {
+    allowed.totalAmount = Number(body.totalAmount) || 0;
+  }
+
+  if (Object.keys(allowed).length === 0) {
+    return NextResponse.json({ error: "변경할 항목 없음" }, { status: 400 });
+  }
+
+  await db.update(schema.expenses).set(allowed).where(eq(schema.expenses.id, id));
+  return NextResponse.json({ ok: true });
+}
+
 export async function DELETE(req: Request) {
   const session = await requireAuth();
   const { id } = await req.json();

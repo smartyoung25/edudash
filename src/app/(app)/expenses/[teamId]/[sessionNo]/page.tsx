@@ -170,7 +170,23 @@ export default async function SessionExpensesPage({
                         {e.memo && <div className="text-xs text-muted-foreground italic">{e.memo}</div>}
                         {e.receiptFilePath && (
                           <div className="mt-1">
-                            <ReceiptViewer expenseId={e.id} mimeType={e.receiptMimeType} />
+                            <ReceiptViewer
+                              expenseId={e.id}
+                              mimeType={e.receiptMimeType}
+                              initial={{
+                                spentDate: e.spentDate,
+                                category: e.category,
+                                vendorName: e.vendorName,
+                                vendorCeo: e.vendorCeo,
+                                vendorBizNo: e.vendorBizNo,
+                                vendorType: e.vendorType,
+                                supplyAmount: e.supplyAmount,
+                                vatAmount: e.vatAmount,
+                                totalAmount: e.totalAmount,
+                                memo: e.memo,
+                                docType: e.docType,
+                              }}
+                            />
                           </div>
                         )}
                       </td>
