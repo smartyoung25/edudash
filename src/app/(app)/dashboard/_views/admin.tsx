@@ -19,6 +19,7 @@ export async function AdminDashboard({ userName }: { userName: string }) {
     getProgressByProduct(),
   ]);
 
+  const riskById = new Map(metrics.risky.map((r) => [r.teamId, r.riskLevel]));
   const cards = teams.map((t) => ({
     id: t.id,
     name: t.name,
@@ -33,7 +34,11 @@ export async function AdminDashboard({ userName }: { userName: string }) {
     currentSession: progressMap[t.id]?.done ?? 0,
     progressPercent: progressMap[t.id]?.progressPercent ?? 0,
     cancelled: progressMap[t.id]?.cancelled ?? 0,
+    risk: riskById.get(t.id),
   }));
+  // 위험팀 우선 정렬: high → mid → 진행률 낮은 순
+  const rank = (r: "high" | "mid" | "low" | undefined) => r === "high" ? 0 : r === "mid" ? 1 : 2;
+  cards.sort((a, b) => rank(a.risk) - rank(b.risk) || a.progressPercent - b.progressPercent);
 
   const topRisk = metrics.risky[0];
   const riskSummary = topRisk

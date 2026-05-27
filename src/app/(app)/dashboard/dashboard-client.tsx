@@ -19,9 +19,9 @@ export function DashboardClient({ teams }: { teams: TeamCardData[] }) {
   return (
     <div className="space-y-4">
       <ProductFilter selected={filter} onSelect={setFilter} counts={counts} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {filtered.map((t) => (
-          <TeamCard key={t.id} team={t} />
+          <TeamCard key={t.id} team={t} compact />
         ))}
       </div>
       {filtered.length === 0 && (
