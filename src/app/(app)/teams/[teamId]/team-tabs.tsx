@@ -8,6 +8,7 @@ const TABS = [
   { key: "members",   label: "팀원" },
   { key: "schedule",  label: "교육일정" },
   { key: "kpi",       label: "KPI" },
+  { key: "qr",        label: "보고 QR" },
 ];
 
 export function TeamTabs({ teamId }: { teamId: number }) {

@@ -139,6 +139,16 @@ export const expenseReceipts = sqliteTable("expense_receipts", {
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// 팀별 QR 보고 토큰 — /r/<token> 으로 강사 폰에서 1탭 보고
+// teams 테이블에 nullable 컬럼으로 따로 추가하지 않고 별도 테이블로 분리 (운영 중 동적 발급/회수 용이)
+export const teamQrTokens = sqliteTable("team_qr_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  revokedAt: text("revoked_at"),
+});
+
 // 팀 별칭 — 메일 본문/제목에 "한우해움" 같이 들어와도 팀7 한우7기로 매칭되게
 export const teamAliases = sqliteTable("team_aliases", {
   id: integer("id").primaryKey({ autoIncrement: true }),
