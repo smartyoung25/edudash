@@ -12,6 +12,7 @@ import { importTravelReceiptsFromNotion, isNotionEnabled } from "./notion";
 import { syncDriveTeamStatus } from "./drive-team-status";
 import { runWeeklyStudentReport } from "./weekly-report";
 import { checkAndSendProgressAlerts } from "./progress-alert";
+import { snapshotProgressForThisWeek } from "@/lib/dashboard-metrics";
 import { db, schema } from "@/db/client";
 import { eq } from "drizzle-orm";
 
@@ -103,6 +104,17 @@ export function startScheduler() {
       console.log(`[스케줄러] 진행률 알림 ${r.ok ? "완료" : "오류포함"}: ${r.message}`);
     } catch (err) {
       console.error("[스케줄러] 진행률 알림 오류:", err);
+    }
+  });
+
+  // 주간 진행률 스냅샷 — 매주 월요일 09:05
+  cron.schedule("5 9 * * 1", async () => {
+    console.log("[스케줄러] 주간 진행률 스냅샷 시작...");
+    try {
+      const r = await snapshotProgressForThisWeek();
+      console.log(`[스케줄러] 스냅샷 완료: 신규 ${r.inserted}건, 갱신 ${r.updated}건`);
+    } catch (err) {
+      console.error("[스케줄러] 스냅샷 오류:", err);
     }
   });
 }

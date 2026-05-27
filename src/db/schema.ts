@@ -139,6 +139,18 @@ export const expenseReceipts = sqliteTable("expense_receipts", {
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// 주간 진행률 스냅샷 — 대시보드 Δ 전주 대비, 추세 차트의 기반.
+// 매주 월요일 09:00 cron으로 적재(scheduler.ts).
+export const progressSnapshots = sqliteTable("progress_snapshots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  weekStart: text("week_start").notNull(),                 // 그 주 월요일 YYYY-MM-DD
+  progressPercent: integer("progress_percent").notNull(),
+  snapshotAt: text("snapshot_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (t) => ({
+  uq: uniqueIndex("progress_snapshot_team_week_uq").on(t.teamId, t.weekStart),
+}));
+
 // 팀별 QR 보고 토큰 — /r/<token> 으로 강사 폰에서 1탭 보고
 // teams 테이블에 nullable 컬럼으로 따로 추가하지 않고 별도 테이블로 분리 (운영 중 동적 발급/회수 용이)
 export const teamQrTokens = sqliteTable("team_qr_tokens", {

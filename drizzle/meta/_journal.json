@@ -22,6 +22,13 @@
       "when": 1779842685616,
       "tag": "0002_yellow_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1779845141935,
+      "tag": "0003_curvy_thing",
+      "breakpoints": true
     }
   ]
 }
