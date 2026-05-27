@@ -237,6 +237,12 @@ export interface DashboardMetrics {
   budgetRiskTeams: number;
   approachingDeadlines: number;
   risky: RiskyTeamRow[];
+  /** KPI 카드 클릭 시 단일 팀일 때 deep-link 가능하도록 첫 대상 팀 id를 함께 노출. */
+  firstTeamIds: {
+    missingReport: number | null;
+    budgetRisk: number | null;
+    approachingDeadline: number | null;
+  };
 }
 
 export async function getDashboardMetrics(opts: MetricsOpts = {}): Promise<DashboardMetrics> {
@@ -275,6 +281,11 @@ export async function getDashboardMetrics(opts: MetricsOpts = {}): Promise<Dashb
     budgetRiskTeams: new Set(budgets.map((b) => b.teamId)).size,
     approachingDeadlines: deadlines.length,
     risky,
+    firstTeamIds: {
+      missingReport: missing[0]?.teamId ?? null,
+      budgetRisk: budgets[0]?.teamId ?? null,
+      approachingDeadline: deadlines[0]?.teamId ?? null,
+    },
   };
 }
 
