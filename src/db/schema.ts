@@ -310,6 +310,30 @@ export const progressNotifications = sqliteTable(
   }),
 );
 
+// ───────── 제출서류 양식 게시판 ─────────
+
+export const formPosts = sqliteTable("form_posts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  category: text("category", { enum: ["코디전달", "내부공유", "기타"] }).notNull().default("내부공유"),
+  authorId: integer("author_id"),
+  authorName: text("author_name").notNull(),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const formAttachments = sqliteTable("form_attachments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id").notNull().references(() => formPosts.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type"),
+  driveFileId: text("drive_file_id").notNull(),
+  driveUrl: text("drive_url"),
+  sizeBytes: integer("size_bytes"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Member = typeof members.$inferSelect;
