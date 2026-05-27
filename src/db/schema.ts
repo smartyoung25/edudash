@@ -310,6 +310,30 @@ export const progressNotifications = sqliteTable(
   }),
 );
 
+// ───────── 법인카드 매입내역 (CSV 업로드) ─────────
+//
+// 카드사 명세서 CSV 1행 = 1 row. 영수증(expenses/agency_expenses)과 (날짜+금액+끝4자리) 기준으로 매칭하여
+// matchedExpenseId / matchedAgencyExpenseId 중 하나가 세팅됨.
+
+export const cardStatements = sqliteTable("card_statements", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  txDate: text("tx_date").notNull(),                // YYYY-MM-DD
+  vendorName: text("vendor_name"),                  // 카드사 명세 가맹점명
+  amount: integer("amount").notNull(),              // 승인금액(원)
+  cardLast4: text("card_last4"),                    // 카드 끝 4자리
+  cardType: text("card_type", { enum: ["기업카드", "기업법인카드", "NH법인카드", "개인카드"] }),
+  approvalNo: text("approval_no"),                  // 승인번호 (중복방지)
+  rawRow: text("raw_row"),                          // 원본 CSV 한 줄 (JSON)
+  uploadBatch: text("upload_batch"),                // 업로드 회차 식별자
+  matchedExpenseId: integer("matched_expense_id"),
+  matchedAgencyExpenseId: integer("matched_agency_expense_id"),
+  matchConfidence: real("match_confidence"),        // 0.0 ~ 1.0
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (t) => ({
+  // 같은 카드끝4·승인번호·금액 조합은 중복 업로드 차단
+  uq: uniqueIndex("card_stmt_dedup_uq").on(t.txDate, t.cardLast4, t.amount, t.approvalNo),
+}));
+
 // ───────── 제출서류 양식 게시판 ─────────
 
 export const formPosts = sqliteTable("form_posts", {

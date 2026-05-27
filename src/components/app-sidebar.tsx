@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, CalendarDays, Target, FileText, FileSpreadsheet, Phone, Settings, LogOut, Receipt, Building2, FolderOpen } from "lucide-react";
+import { LayoutDashboard, CalendarDays, Target, FileText, FileSpreadsheet, Phone, Settings, LogOut, Receipt, Building2, FolderOpen, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { canAccess, ROLE_LABEL, type ModuleKey, type Role } from "@/lib/permissions";
 
@@ -13,6 +13,7 @@ const ALL_NAV: { href: string; label: string; icon: React.ElementType; key: Modu
   { href: "/documents", label: "서류제출",  icon: FileText,        key: "documents" },
   { href: "/expenses",  label: "팀별정산",  icon: Receipt,         key: "expenses" },
   { href: "/agency",    label: "기관경비",  icon: Building2,       key: "agency" },
+  { href: "/expenses/reconcile", label: "카드 대사", icon: CreditCard, key: "reconcile" },
   { href: "/reports",   label: "주간보고",  icon: FileSpreadsheet, key: "reports" },
   { href: "/forms",     label: "제출서류 양식", icon: FolderOpen,  key: "forms" },
   { href: "/contacts",  label: "연락망",    icon: Phone,           key: "contacts" },

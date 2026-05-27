@@ -15,6 +15,13 @@
       "when": 1779271241936,
       "tag": "0001_giant_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1779842685616,
+      "tag": "0002_yellow_hercules",
+      "breakpoints": true
     }
   ]
 }
