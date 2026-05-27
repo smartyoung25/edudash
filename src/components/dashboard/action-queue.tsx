@@ -12,14 +12,15 @@ export function ActionQueue({ rows, className = "" }: { rows: RiskyTeamRow[]; cl
         <div className="text-xs text-muted-foreground mt-0.5">위험도 점수 순. 행 클릭 → 팀 상세</div>
       </div>
       {rows.length === 0 ? (
-        <div className="p-8 text-center text-sm text-muted-foreground">즉시 조치가 필요한 팀이 없습니다.</div>
+        <div className="p-8 text-center text-sm text-muted-foreground" role="status">즉시 조치가 필요한 팀이 없습니다.</div>
       ) : (
-        <ul className="divide-y max-h-[480px] overflow-auto">
+        <ul className="divide-y max-h-[480px] overflow-auto" aria-label="조치 필요 팀 목록">
           {rows.map((r) => (
             <li key={r.teamId}>
               <Link
                 href={`/teams/${r.teamId}`}
-                className="flex items-start gap-3 p-3 hover:bg-muted/40 transition-colors"
+                aria-label={`${r.teamName} 팀 상세로 이동 — ${r.riskLevel === "high" ? "고위험" : r.riskLevel === "mid" ? "주의" : "양호"}, ${r.reasons.join(", ")}`}
+                className="flex items-start gap-3 p-3 hover:bg-muted/40 focus-visible:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 transition-colors"
               >
                 <RiskBadge level={r.riskLevel} score={r.riskScore} />
                 <div className="flex-1 min-w-0">
@@ -28,7 +29,7 @@ export function ActionQueue({ rows, className = "" }: { rows: RiskyTeamRow[]; cl
                     {r.reasons.join(" · ")}
                   </div>
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
               </Link>
             </li>
           ))}
