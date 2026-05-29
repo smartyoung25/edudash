@@ -1,5 +1,3 @@
-import { db, schema } from "@/db/client";
-import { getAllTeamProgress } from "@/lib/kpi";
 import { getDashboardMetrics } from "@/lib/dashboard-metrics";
 import { getProgressTrendByWeek, getProgressByProduct } from "@/lib/dashboard-trend";
 import { PageHeader } from "@/components/page-header";
@@ -7,38 +5,13 @@ import { HeroBar } from "@/components/dashboard/hero-bar";
 import { KpiRow } from "@/components/dashboard/kpi-row";
 import { TrendCard } from "@/components/dashboard/trend-card";
 import { ActionQueue } from "@/components/dashboard/action-queue";
-import { DashboardClient } from "../dashboard-client";
-import type { Product } from "@/lib/teams";
 
 export async function AdminDashboard({ userName }: { userName: string }) {
-  const [teams, progressMap, metrics, trend, byProduct] = await Promise.all([
-    db.select().from(schema.teams),
-    getAllTeamProgress(),
+  const [metrics, trend, byProduct] = await Promise.all([
     getDashboardMetrics(),
     getProgressTrendByWeek(8),
     getProgressByProduct(),
   ]);
-
-  const riskById = new Map(metrics.risky.map((r) => [r.teamId, r.riskLevel]));
-  const cards = teams.map((t) => ({
-    id: t.id,
-    name: t.name,
-    product: t.product as Product,
-    cohort: t.cohort,
-    courseName: t.courseName,
-    region: t.region,
-    headCount: t.headCount,
-    totalSessions: progressMap[t.id]?.effectiveTotal ?? t.totalSessions,
-    endDate: t.endDate,
-    professorName: t.professorName,
-    currentSession: progressMap[t.id]?.done ?? 0,
-    progressPercent: progressMap[t.id]?.progressPercent ?? 0,
-    cancelled: progressMap[t.id]?.cancelled ?? 0,
-    risk: riskById.get(t.id),
-  }));
-  // 위험팀 우선 정렬: high → mid → 진행률 낮은 순
-  const rank = (r: "high" | "mid" | "low" | undefined) => r === "high" ? 0 : r === "mid" ? 1 : 2;
-  cards.sort((a, b) => rank(a.risk) - rank(b.risk) || a.progressPercent - b.progressPercent);
 
   const topRisk = metrics.risky[0];
   const riskSummary = topRisk
@@ -58,7 +31,6 @@ export async function AdminDashboard({ userName }: { userName: string }) {
           <TrendCard className="lg:col-span-8 order-2 lg:order-1" trend={trend} byProduct={byProduct} />
           <ActionQueue className="lg:col-span-4 order-1 lg:order-2" rows={metrics.risky.slice(0, 12)} />
         </div>
-        <DashboardClient teams={cards} />
       </div>
     </div>
   );
