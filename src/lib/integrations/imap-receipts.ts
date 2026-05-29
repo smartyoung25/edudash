@@ -238,9 +238,11 @@ export async function importReceiptsFromMail(opts?: {
       for (const uid of candidateUids) {
         try {
           const msg = await client.fetchOne(String(uid), { source: true, envelope: true, internalDate: true }, { uid: true });
-          if (!msg?.source) continue;
+          if (!msg) continue;
+          const source = (msg as { source?: Buffer }).source;
+          if (!source) continue;
 
-          const parsed: ParsedMail = await simpleParser(msg.source);
+          const parsed: ParsedMail = await simpleParser(source);
           const fromAddr = (parsed.from?.value?.[0]?.address ?? "").toLowerCase();
           if (!fromAddr) continue;
 
@@ -255,7 +257,7 @@ export async function importReceiptsFromMail(opts?: {
           const subject = parsed.subject ?? "";
           const text = parsed.text ?? "";
           const messageId = parsed.messageId ?? `uid-${uid}`;
-          const receivedAt = (parsed.date ?? msg.internalDate ?? new Date()).toISOString();
+          const receivedAt = new Date(parsed.date ?? msg.internalDate ?? new Date()).toISOString();
 
           const teamId = await pickTeam(fromAddr, subject, text);
           if (!teamId) continue;

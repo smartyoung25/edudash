@@ -50,7 +50,7 @@ export default async function CategoryExpensesPage({
   if (!teamRow) notFound();
 
   const expenses = await db.select().from(schema.expenses)
-    .where(and(eq(schema.expenses.teamId, teamId), eq(schema.expenses.category, category)))
+    .where(and(eq(schema.expenses.teamId, teamId), eq(schema.expenses.category, category as typeof CATEGORIES[number])))
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
 
   const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);

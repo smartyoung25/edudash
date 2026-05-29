@@ -33,7 +33,7 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
   if (!KINDS.includes(kind as any)) notFound();
 
   const rows = await db.select().from(schema.agencyExpenses)
-    .where(eq(schema.agencyExpenses.kind, kind))
+    .where(eq(schema.agencyExpenses.kind, kind as "출장비" | "기타경비"))
     .orderBy(desc(schema.agencyExpenses.spentDate), desc(schema.agencyExpenses.id));
 
   const isReceipt = (r: typeof rows[number]) => !r.docType || r.docType === "영수증";

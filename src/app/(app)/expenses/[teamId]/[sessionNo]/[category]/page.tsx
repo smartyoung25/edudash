@@ -61,7 +61,7 @@ export default async function SessionCategoryPage({
   const expenses = await db.select().from(schema.expenses)
     .where(and(
       eq(schema.expenses.teamId, teamId),
-      eq(schema.expenses.category, category),
+      eq(schema.expenses.category, category as typeof CATEGORIES[number]),
       isNoneSession ? isNull(schema.expenses.sessionNo) : eq(schema.expenses.sessionNo, sessionNo as number),
     ))
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
