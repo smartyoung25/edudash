@@ -4,8 +4,8 @@ import { createClient } from "@libsql/client";
 const TOLERANCE_BY_CAT = {
   "재료비": 999,            // 가장 가까운 회차 (사전/사후 구매)
   "다과": 999,              // 가장 가까운 회차
-  "주임강사수당": 14,
-  "퍼실리테이터수당": 14,
+  "강사비": 14,
+  "퍼실리테이터비용": 14,
   "식대": 0,                // 당일만 (현장 식사)
 };
 const DEFAULT_TOLERANCE = 1;

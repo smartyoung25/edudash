@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ImageIcon, FileText, Save, Loader2, ImageOff, Pencil, Sparkles } from "lucide-react";
 import { classifyExpense } from "@/lib/integrations/expense-classifier";
 
-const CATEGORIES = ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
+const CATEGORIES = ["강사비", "퍼실리테이터비용", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
 const DOC_TYPES = ["영수증", "거래명세표", "세금계산서"] as const;
 
 export interface ReceiptViewerInitial {

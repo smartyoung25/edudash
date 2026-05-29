@@ -18,10 +18,10 @@ import { countsTowardTotal } from "@/lib/expense";
 
 export const dynamic = "force-dynamic";
 
-const CATEGORIES = ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
+const CATEGORIES = ["강사비", "퍼실리테이터비용", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
 const CAT_COLORS: Record<string, string> = {
-  "주임강사수당":   "bg-purple-50 text-purple-700 border-purple-200",
-  "퍼실리테이터수당": "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  "강사비":   "bg-purple-50 text-purple-700 border-purple-200",
+  "퍼실리테이터비용": "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
   "식대":   "bg-amber-50 text-amber-700 border-amber-200",
   "다과":   "bg-rose-50 text-rose-700 border-rose-200",
   "재료비": "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -145,7 +145,7 @@ export default async function SessionCategoryPage({
                         {e.memo && <div className="text-xs text-muted-foreground italic">{e.memo}</div>}
                         <div className="mt-1 flex items-center gap-1 flex-wrap">
                           {e.receiptFilePath && <ReceiptViewer expenseId={e.id} mimeType={e.receiptMimeType} />}
-                          {(category === "주임강사수당" || category === "퍼실리테이터수당") && (
+                          {(category === "강사비" || category === "퍼실리테이터비용") && (
                             <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} label="지급처리" />
                           )}
                         </div>

@@ -37,7 +37,7 @@ def match_team(filename):
     return None
 
 def extract_budget(pdf_path):
-    budget = { "주임강사수당":0, "퍼실리테이터수당":0, "식대":0, "다과":0, "재료비":0, "숙박":0, "임차비":0 }
+    budget = { "강사비":0, "퍼실리테이터비용":0, "식대":0, "다과":0, "재료비":0, "숙박":0, "임차비":0 }
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             text = page.extract_text() or ""
@@ -52,14 +52,14 @@ def extract_budget(pdf_path):
                     continue
                 amount = max(amount_candidates)
 
-                # 퍼실리테이터수당 (먼저 — '강사' 키워드 충돌 방지)
+                # 퍼실리테이터비용 (먼저 — '강사' 키워드 충돌 방지)
                 if re.search(r"퍼\s*실\s*리\s*테\s*이\s*터", line):
-                    budget["퍼실리테이터수당"] = max(budget["퍼실리테이터수당"], amount)
-                # 주임강사수당 = 주임강사 수당 + 강사비(시간당) 합산
+                    budget["퍼실리테이터비용"] = max(budget["퍼실리테이터비용"], amount)
+                # 강사비 = 주임강사 수당 + 강사비(시간당) 합산
                 elif re.search(r"주\s*임\s*강\s*사|^\s*강\s*사\s*비\b|∘.*강\s*사\s*비", line) or (
                     re.search(r"강\s*사\s*비", line) and not re.search(r"교\s*통|이\s*동", line)
                 ):
-                    budget["주임강사수당"] = budget["주임강사수당"] + amount
+                    budget["강사비"] = budget["강사비"] + amount
                 elif re.search(r"\b식\s*비\b|\b식\s*대\b", line):
                     budget["식대"] = max(budget["식대"], amount)
                 elif re.search(r"다\s*과", line):

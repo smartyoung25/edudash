@@ -173,7 +173,7 @@ export const teamAliases = sqliteTable("team_aliases", {
 export const expenseBudgets = sqliteTable("expense_budgets", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
-  category: text("category", { enum: ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] }).notNull(),
+  category: text("category", { enum: ["강사비", "퍼실리테이터비용", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] }).notNull(),
   amount: integer("amount").notNull().default(0),
 }, (t) => ({
   uq: uniqueIndex("expense_budgets_team_cat_uq").on(t.teamId, t.category),
@@ -187,7 +187,7 @@ export const expenses = sqliteTable("expenses", {
   sessionId: integer("session_id").references(() => sessions.id, { onDelete: "set null" }),
   sessionNo: integer("session_no"), // 회차 번호 (sessionId 없을 때도 입력 가능)
   spentDate: text("spent_date").notNull(),  // YYYY-MM-DD
-  category: text("category", { enum: ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] }).notNull(),
+  category: text("category", { enum: ["강사비", "퍼실리테이터비용", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] }).notNull(),
   supplyAmount: integer("supply_amount").notNull().default(0),  // 공급가액
   vatAmount: integer("vat_amount").notNull().default(0),        // 부가세액
   totalAmount: integer("total_amount").notNull().default(0),    // 집행액 = 공급가 + 부가세

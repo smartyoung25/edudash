@@ -5,7 +5,7 @@
  * 신뢰도(confidence)와 매칭 사유(reasons)를 함께 반환한다.
  *
  * 카테고리(=expenses.category enum):
- *   주임강사수당 · 퍼실리테이터수당 · 식대 · 다과 · 재료비 · 숙박 · 임차비 · 출장비 · 기타
+ *   강사비 · 퍼실리테이터비용 · 식대 · 다과 · 재료비 · 숙박 · 임차비 · 출장비 · 기타
  *
  * 신뢰도 가이드라인:
  *   1.00 — 양식/강한 단서 (강사비 양식, 카드사·항공사 등 명시)
@@ -16,8 +16,8 @@
  */
 
 export type ExpenseCategory =
-  | "주임강사수당"
-  | "퍼실리테이터수당"
+  | "강사비"
+  | "퍼실리테이터비용"
   | "식대"
   | "다과"
   | "재료비"
@@ -77,14 +77,14 @@ export function classifyExpense(input: ClassifyInput): ClassifyResult {
   if (ALLOWANCE_FORM_RE.test(haystackOriginal)) {
     if (FACILITATOR_RE.test(haystackOriginal)) {
       reasons.push("'수당지급확인서' + '퍼실리테이터' 키워드");
-      return { category: "퍼실리테이터수당", confidence: 1.0, reasons };
+      return { category: "퍼실리테이터비용", confidence: 1.0, reasons };
     }
     if (HEAD_LECTURER_RE.test(haystackOriginal)) {
       reasons.push("'수당지급확인서' + '주임강사' 키워드");
-      return { category: "주임강사수당", confidence: 1.0, reasons };
+      return { category: "강사비", confidence: 1.0, reasons };
     }
     reasons.push("'수당지급확인서' 양식 감지 (주임강사로 추정)");
-    return { category: "주임강사수당", confidence: 0.85, reasons };
+    return { category: "강사비", confidence: 0.85, reasons };
   }
 
   // 2. 항공/철도/렌터카/주유 — 출장비 강신호

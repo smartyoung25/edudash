@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, ScanLine, Loader2 } from "lucide-react";
 
-const CATEGORIES = ["주임강사수당", "퍼실리테이터수당", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
+const CATEGORIES = ["강사비", "퍼실리테이터비용", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
 const VENDOR_TYPES = ["개인사업자", "법인사업자"] as const;
 const DOC_TYPES = ["영수증", "거래명세표", "세금계산서"] as const;
 

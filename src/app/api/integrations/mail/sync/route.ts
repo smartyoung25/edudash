@@ -18,11 +18,24 @@ async function isAuthorized(req: NextRequest): Promise<boolean> {
   }
 }
 
+function parseOpts(req: NextRequest) {
+  const url = new URL(req.url);
+  const sinceDaysRaw = url.searchParams.get("sinceDays");
+  const sinceDays = sinceDaysRaw ? Number(sinceDaysRaw) || undefined : undefined;
+  const includeRead = url.searchParams.get("includeRead") === "1";
+  const fromEmail = url.searchParams.get("fromEmail") || undefined;
+  const opts: { sinceDays?: number; includeRead?: boolean; fromEmail?: string } = {};
+  if (sinceDays) opts.sinceDays = sinceDays;
+  if (includeRead) opts.includeRead = true;
+  if (fromEmail) opts.fromEmail = fromEmail;
+  return Object.keys(opts).length ? opts : undefined;
+}
+
 export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const result = await pollMailbox();
+  const result = await pollMailbox(parseOpts(req));
   await updateMailStatus(result);
   return NextResponse.json(result, { status: result.ok ? 200 : 500 });
 }
@@ -32,7 +45,7 @@ export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const result = await pollMailbox();
+  const result = await pollMailbox(parseOpts(req));
   await updateMailStatus(result);
   return NextResponse.json(result, { status: result.ok ? 200 : 500 });
 }
