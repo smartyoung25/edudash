@@ -11,6 +11,8 @@ export type AuditAction =
   | "USER_UPDATE"
   | "USER_DELETE"
   | "USER_PASSWORD_RESET"
+  | "INVITE_CREATE"
+  | "INVITE_ACCEPT"
   | "KPI_UPDATE"
   | "DAILY_CREATE"
   | "DAILY_UPDATE"

@@ -290,6 +290,21 @@ export const reportHistory = sqliteTable("report_history", {
   generatedAt: text("generated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// ───────── 사용자 초대 링크 ─────────
+
+export const userInvites = sqliteTable("user_invites", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  tokenHash: text("token_hash").notNull().unique(), // sha256(token)
+  email: text("email").notNull(),
+  name: text("name").notNull(),
+  role: text("role", { enum: ["admin", "coordinator", "professor"] }).notNull(),
+  teamId: integer("team_id"),
+  invitedBy: integer("invited_by"), // user id
+  expiresAt: integer("expires_at").notNull(), // epoch ms
+  usedAt: integer("used_at"), // epoch ms, null = 미사용
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 // ───────── 로그인 시도 (브루트포스 방어, Vercel 다중 인스턴스 대응) ─────────
 
 export const loginAttempts = sqliteTable("login_attempts", {

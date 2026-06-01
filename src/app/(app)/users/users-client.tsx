@@ -41,6 +41,7 @@ export function UsersClient({ initialUsers, teams }: { initialUsers: User[]; tea
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [tempPwdInfo, setTempPwdInfo] = useState<{ email: string; password: string; action: "create" | "reset" } | null>(null);
+  const [inviteInfo, setInviteInfo] = useState<{ email: string; name: string; url: string; expiresAt: number } | null>(null);
 
   function refresh() {
     router.refresh();
@@ -112,10 +113,15 @@ export function UsersClient({ initialUsers, teams }: { initialUsers: User[]; tea
             setTempPwdInfo({ email: user.email, password: pwd, action: "create" });
             refresh();
           }}
+          onInvited={(payload) => {
+            setShowAdd(false);
+            setInviteInfo(payload);
+          }}
         />
       )}
 
       {tempPwdInfo && <TempPasswordDialog info={tempPwdInfo} onClose={() => setTempPwdInfo(null)} />}
+      {inviteInfo && <InviteLinkDialog info={inviteInfo} onClose={() => setInviteInfo(null)} />}
     </div>
   );
 }
@@ -270,7 +276,18 @@ function UserRow({
   );
 }
 
-function AddUserDialog({ teams, onClose, onAdded }: { teams: Team[]; onClose: () => void; onAdded: (user: User, pwd: string) => void }) {
+function AddUserDialog({
+  teams,
+  onClose,
+  onAdded,
+  onInvited,
+}: {
+  teams: Team[];
+  onClose: () => void;
+  onAdded: (user: User, pwd: string) => void;
+  onInvited: (payload: { email: string; name: string; url: string; expiresAt: number }) => void;
+}) {
+  const [mode, setMode] = useState<"invite" | "direct">("invite");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("coordinator");
@@ -278,7 +295,6 @@ function AddUserDialog({ teams, onClose, onAdded }: { teams: Team[]; onClose: ()
   const [err, setErr] = useState<string | null>(null);
   const [busy, startTx] = useTransition();
 
-  // role 이 admin 으로 바뀌면 담당 팀 자동 초기화
   function changeRole(r: Role) {
     setRole(r);
     if (r === "admin") setTeamId(null);
@@ -287,33 +303,60 @@ function AddUserDialog({ teams, onClose, onAdded }: { teams: Team[]; onClose: ()
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    const payload = { email: email.trim().toLowerCase(), name: name.trim(), role, teamId };
     startTx(async () => {
-      const res = await fetch("/api/users", {
+      const path = mode === "invite" ? "/api/users/invite" : "/api/users";
+      const res = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), name: name.trim(), role, teamId }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErr(data.error ?? "추가 실패");
+        setErr(data.error ?? (mode === "invite" ? "초대 링크 발급 실패" : "추가 실패"));
         return;
       }
-      const created: User = {
-        id: data.id,
-        email: email.trim().toLowerCase(),
-        name: name.trim(),
-        role,
-        teamId,
-        createdAt: new Date().toISOString().substring(0, 10),
-      };
-      onAdded(created, data.tempPassword);
+      if (mode === "invite") {
+        onInvited({ email: payload.email, name: payload.name, url: data.url, expiresAt: data.expiresAt });
+      } else {
+        const created: User = {
+          id: data.id,
+          email: payload.email,
+          name: payload.name,
+          role,
+          teamId,
+          createdAt: new Date().toISOString().substring(0, 10),
+        };
+        onAdded(created, data.tempPassword);
+      }
     });
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4">사용자 추가</h2>
+        <h2 className="text-lg font-semibold mb-3">사용자 추가</h2>
+        <div className="mb-4 flex rounded-md border p-1 text-sm">
+          <button
+            type="button"
+            onClick={() => setMode("invite")}
+            className={`flex-1 rounded px-2 py-1.5 transition-colors ${mode === "invite" ? "bg-emerald-100 text-emerald-900 font-medium" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            초대 링크 발급 (추천)
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("direct")}
+            className={`flex-1 rounded px-2 py-1.5 transition-colors ${mode === "direct" ? "bg-emerald-100 text-emerald-900 font-medium" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            직접 추가 (임시 비번)
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          {mode === "invite"
+            ? "링크를 직원에게 전달하면 본인이 비밀번호를 설정합니다 (7일 유효)."
+            : "임시 비밀번호를 즉시 발급합니다. 직원에게 전달 후 첫 로그인 시 변경 권장."}
+        </p>
         <form onSubmit={submit} className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="add-email">이메일 / 아이디</Label>
@@ -365,10 +408,49 @@ function AddUserDialog({ teams, onClose, onAdded }: { teams: Team[]; onClose: ()
               취소
             </Button>
             <Button type="submit" disabled={busy}>
-              {busy ? "추가 중..." : "추가하기"}
+              {busy ? "처리 중..." : mode === "invite" ? "초대 링크 발급" : "추가하기"}
             </Button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function InviteLinkDialog({
+  info,
+  onClose,
+}: {
+  info: { email: string; name: string; url: string; expiresAt: number };
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(info.url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  const expDate = new Date(info.expiresAt);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold mb-2">초대 링크 발급 완료</h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          <strong>{info.name}</strong> ({info.email}) 의 초대 링크입니다. 직원에게 메일·메신저 등으로 전달하세요. 링크 클릭 시 본인이 비밀번호를 설정하고 자동 로그인됩니다.
+        </p>
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 p-3 text-sm">
+          <span className="flex-1 select-all break-all font-mono">{info.url}</span>
+          <Button size="sm" variant="ghost" onClick={copy} title="복사">
+            {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          유효기간: {expDate.toLocaleDateString("ko-KR")} {expDate.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 까지 · 1회 사용
+        </p>
+        <div className="mt-4 flex justify-end">
+          <Button onClick={onClose}>확인</Button>
+        </div>
       </div>
     </div>
   );
