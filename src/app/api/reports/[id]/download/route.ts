@@ -17,7 +17,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const r = rows[0];
   if (!r) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // file_path가 절대경로면 그대로, 아니면 cwd 기준 상대
+  // Drive webViewLink 인 경우 → Drive 로 리다이렉트
+  if (/^https?:\/\//.test(r.filePath)) {
+    return NextResponse.redirect(r.filePath, 302);
+  }
+
+  // file_path가 절대경로면 그대로, 아니면 cwd 기준 상대 (legacy 로컬 파일)
   const abs = path.isAbsolute(r.filePath) ? r.filePath : path.join(process.cwd(), r.filePath);
   if (!fs.existsSync(abs)) return NextResponse.json({ error: "file missing" }, { status: 410 });
 

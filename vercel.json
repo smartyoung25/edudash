@@ -3,10 +3,12 @@
   "regions": ["icn1"],
   "crons": [
     { "path": "/api/integrations/mail/sync", "schedule": "0 7 * * *" },
-    { "path": "/api/integrations/mail/sync", "schedule": "0 12 * * *" }
+    { "path": "/api/integrations/mail/sync", "schedule": "0 12 * * *" },
+    { "path": "/api/reports/weekly/auto", "schedule": "0 11 * * 4" }
   ],
   "functions": {
     "src/app/api/reports/weekly/route.ts": { "maxDuration": 60 },
+    "src/app/api/reports/weekly/auto/route.ts": { "maxDuration": 60 },
     "src/app/api/integrations/mail/sync/route.ts": { "maxDuration": 60 },
     "src/app/api/integrations/sheets/sync/route.ts": { "maxDuration": 60 },
     "src/app/api/documents/finalize/route.ts": { "maxDuration": 30 }
