@@ -23,6 +23,17 @@ interface Team {
 
 const ROLES: Role[] = ["admin", "coordinator", "professor"];
 
+function RoleBadge({ role }: { role: string }) {
+  const styles: Record<string, string> = {
+    admin: "bg-red-50 text-red-700 border-red-200",
+    coordinator: "bg-blue-50 text-blue-700 border-blue-200",
+    professor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  };
+  const label = ROLE_LABEL[role as Role] ?? role;
+  const cls = styles[role] ?? "bg-gray-50 text-gray-700 border-gray-200";
+  return <span className={`inline-block rounded-md border px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
+}
+
 export function UsersClient({ initialUsers, teams }: { initialUsers: User[]; teams: Team[] }) {
   const router = useRouter();
   const teamMap = new Map(teams.map((t) => [t.id, t.name]));
@@ -188,7 +199,15 @@ function UserRow({
           <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8" />
         </td>
         <td className="px-3 py-2">
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="h-8 rounded-md border px-2 text-sm">
+          <select
+            value={role}
+            onChange={(e) => {
+              const r = e.target.value as Role;
+              setRole(r);
+              if (r === "admin") setTeamId(null);
+            }}
+            className="h-8 rounded-md border px-2 text-sm"
+          >
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABEL[r]}
@@ -231,7 +250,7 @@ function UserRow({
       <td className="px-3 py-2 text-muted-foreground">{user.id}</td>
       <td className="px-3 py-2 font-mono text-xs">{user.email}</td>
       <td className="px-3 py-2">{user.name}</td>
-      <td className="px-3 py-2">{ROLE_LABEL[user.role as Role] ?? user.role}</td>
+      <td className="px-3 py-2"><RoleBadge role={user.role} /></td>
       <td className="px-3 py-2">{user.teamId ? teamMap.get(user.teamId) ?? `#${user.teamId}` : <span className="text-muted-foreground">—</span>}</td>
       <td className="px-3 py-2 text-muted-foreground text-xs">{user.createdAt.substring(0, 10)}</td>
       <td className="px-3 py-2">
@@ -254,10 +273,16 @@ function UserRow({
 function AddUserDialog({ teams, onClose, onAdded }: { teams: Team[]; onClose: () => void; onAdded: (user: User, pwd: string) => void }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<Role>("admin");
+  const [role, setRole] = useState<Role>("coordinator");
   const [teamId, setTeamId] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, startTx] = useTransition();
+
+  // role 이 admin 으로 바뀌면 담당 팀 자동 초기화
+  function changeRole(r: Role) {
+    setRole(r);
+    if (r === "admin") setTeamId(null);
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -304,7 +329,7 @@ function AddUserDialog({ teams, onClose, onAdded }: { teams: Team[]; onClose: ()
               <select
                 id="add-role"
                 value={role}
-                onChange={(e) => setRole(e.target.value as Role)}
+                onChange={(e) => changeRole(e.target.value as Role)}
                 className="h-9 w-full rounded-md border px-2 text-sm"
               >
                 {ROLES.map((r) => (
