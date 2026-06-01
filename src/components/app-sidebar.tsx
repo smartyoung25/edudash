@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, CalendarDays, Target, FileText, FileSpreadsheet, Phone, Settings, LogOut, Receipt, Building2, FolderOpen, CreditCard, KeyRound } from "lucide-react";
+import { LayoutDashboard, CalendarDays, Target, FileText, FileSpreadsheet, Phone, Settings, LogOut, Receipt, Building2, FolderOpen, CreditCard, KeyRound, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { canAccess, ROLE_LABEL, type ModuleKey, type Role } from "@/lib/permissions";
 
@@ -17,6 +17,7 @@ const ALL_NAV: { href: string; label: string; icon: React.ElementType; key: Modu
   { href: "/reports",   label: "주간보고",  icon: FileSpreadsheet, key: "reports" },
   { href: "/forms",     label: "제출서류 양식", icon: FolderOpen,  key: "forms" },
   { href: "/contacts",  label: "연락망",    icon: Phone,           key: "contacts" },
+  { href: "/users",     label: "사용자 관리", icon: Users,          key: "users" },
   { href: "/settings",  label: "연동설정",  icon: Settings,        key: "settings" },
 ];
 

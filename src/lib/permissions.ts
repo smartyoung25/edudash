@@ -2,7 +2,7 @@
 
 export type Role = "admin" | "coordinator" | "professor";
 
-export type ModuleKey = "dashboard" | "daily" | "kpi" | "documents" | "expenses" | "agency" | "reconcile" | "reports" | "forms" | "contacts" | "settings";
+export type ModuleKey = "dashboard" | "daily" | "kpi" | "documents" | "expenses" | "agency" | "reconcile" | "reports" | "forms" | "contacts" | "settings" | "users";
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "관리자",
@@ -12,7 +12,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 // 모듈별 사이드바 표시 여부
 export const MENU_ACCESS: Record<Role, ModuleKey[]> = {
-  admin:       ["dashboard", "daily", "kpi", "documents", "expenses", "agency", "reconcile", "reports", "forms", "contacts", "settings"],
+  admin:       ["dashboard", "daily", "kpi", "documents", "expenses", "agency", "reconcile", "reports", "forms", "contacts", "settings", "users"],
   coordinator: ["dashboard", "daily", "kpi", "documents", "expenses", "forms"],
   professor:   ["dashboard", "daily", "kpi", "documents", "expenses", "forms"],
 };
