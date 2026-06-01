@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, CalendarDays, Target, FileText, FileSpreadsheet, Phone, Settings, LogOut, Receipt, Building2, FolderOpen, CreditCard } from "lucide-react";
+import { LayoutDashboard, CalendarDays, Target, FileText, FileSpreadsheet, Phone, Settings, LogOut, Receipt, Building2, FolderOpen, CreditCard, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { canAccess, ROLE_LABEL, type ModuleKey, type Role } from "@/lib/permissions";
 
@@ -67,13 +67,22 @@ export function AppSidebar({ role, name }: { role: Role; name: string }) {
             <div className="truncate text-sm font-medium">{name}</div>
             <div className="text-xs text-muted-foreground">{ROLE_LABEL[role]}</div>
           </div>
-          <button
-            onClick={logout}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="로그아웃"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <Link
+              href="/me/password"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="비밀번호 변경"
+            >
+              <KeyRound className="h-4 w-4" />
+            </Link>
+            <button
+              onClick={logout}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="로그아웃"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

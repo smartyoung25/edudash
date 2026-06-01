@@ -12,14 +12,6 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <LoginForm />
-          <div className="mt-6 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-            <div className="font-medium mb-1">테스트 계정 (비밀번호 모두 1234)</div>
-            <ul className="space-y-0.5">
-              <li><code>admin</code> — 관리자(이암허브)</li>
-              <li><code>coord1</code> — 코디네이터</li>
-              <li><code>prof1</code> — 주임교수</li>
-            </ul>
-          </div>
         </CardContent>
       </Card>
     </div>
