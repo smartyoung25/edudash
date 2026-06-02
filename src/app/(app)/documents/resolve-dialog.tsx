@@ -32,13 +32,19 @@ export function ResolveDialog({ teams, unclassified }: { teams: Team[]; unclassi
     setSelected(allChecked ? new Set() : new Set(unclassified.map((d) => d.id)));
   }
 
+  const isAgency = teamId.startsWith("agency:");
+
   function classify() {
-    if (!ids.length || !teamId || !docType) return;
+    if (!ids.length) return;
+    if (!isAgency && (!teamId || !docType)) return;
     startTransition(async () => {
+      const body = isAgency
+        ? { ids, agencyKind: teamId.slice("agency:".length) }
+        : { ids, teamId: Number(teamId), docType };
       await fetch("/api/documents/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, teamId: Number(teamId), docType }),
+        body: JSON.stringify(body),
       });
       setSelected(new Set()); setTeamId(""); setDocType("");
       router.refresh();
@@ -104,18 +110,20 @@ export function ResolveDialog({ teams, unclassified }: { teams: Team[]; unclassi
           {/* 분류 입력 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>팀</Label>
+              <Label>팀 / 기관경비</Label>
               <Select value={teamId} onValueChange={setTeamId}>
-                <SelectTrigger><SelectValue placeholder="팀 선택" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="agency:출장비">기관경비 · 출장비</SelectItem>
+                  <SelectItem value="agency:기타경비">기관경비 · 기타경비</SelectItem>
                   {teams.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>서류 유형</Label>
-              <Select value={docType} onValueChange={setDocType}>
-                <SelectTrigger><SelectValue placeholder="유형" /></SelectTrigger>
+              <Label>서류 유형{isAgency && <span className="text-muted-foreground"> (기관경비는 불필요)</span>}</Label>
+              <Select value={docType} onValueChange={setDocType} disabled={isAgency}>
+                <SelectTrigger><SelectValue placeholder={isAgency ? "—" : "유형"} /></SelectTrigger>
                 <SelectContent>
                   {DOC_TYPES.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
@@ -129,7 +137,7 @@ export function ResolveDialog({ teams, unclassified }: { teams: Team[]; unclassi
             </Button>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>닫기</Button>
-              <Button type="button" disabled={isPending || !ids.length || !teamId || !docType} onClick={classify}>
+              <Button type="button" disabled={isPending || !ids.length || (!isAgency && (!teamId || !docType))} onClick={classify}>
                 선택 분류{ids.length ? ` (${ids.length})` : ""}
               </Button>
             </div>

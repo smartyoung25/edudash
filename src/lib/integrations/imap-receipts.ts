@@ -8,7 +8,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser, type ParsedMail, type Attachment } from "mailparser";
 import { db, schema } from "@/db/client";
-import { eq, and, like } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
 import { downloadDriveFile, uploadDocumentToDrive } from "./drive";
 import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
@@ -191,6 +191,19 @@ export interface ReceiptContext {
   receivedAt: string;          // ISO
   subjectSession: number | null;
   teams: { id: number; name: string }[];
+  /** 지정 시 OCR 카테고리와 무관하게 기관정산(agency)으로 강제, 해당 kind 로 등록 */
+  forceAgencyKind?: "출장비" | "기타경비";
+}
+
+// OCR 카테고리 → 기관경비 세부분류(subcategory) 매핑
+function toAgencySubcategory(category: string): "일비" | "식비" | "교통비" | "숙박비" | "다과비" | "택시비" | "기타" {
+  switch (category) {
+    case "식대": return "식비";
+    case "교통비": return "교통비";
+    case "숙박": return "숙박비";
+    case "다과": return "다과비";
+    default: return "기타";
+  }
 }
 
 export type ReceiptOutcome =
@@ -208,15 +221,25 @@ export async function processReceiptCandidate(
   cand: { name: string; buf: Buffer; mime?: string },
   ctx: ReceiptContext
 ): Promise<ReceiptOutcome> {
-  const { teamId, fromAddr, subject, messageId, receivedAt, subjectSession, teams } = ctx;
+  const { teamId, fromAddr, subject, messageId, receivedAt, subjectSession, teams, forceAgencyKind } = ctx;
+  const dedupKey = `mail:${messageId}:${cand.name}`;
 
-  // 중복 확인 (message-id + 첨부파일명)
-  const existing = await db
-    .select()
-    .from(schema.expenses)
-    .where(and(eq(schema.expenses.mailMessageId, messageId), eq(schema.expenses.attachmentName, cand.name)))
-    .limit(1);
-  if (existing.length > 0) return { status: "duplicate" };
+  // 중복 확인 — 팀 경비는 expenses(message-id+파일명), 기관경비는 dedupKey
+  if (forceAgencyKind) {
+    const dup = await db
+      .select({ id: schema.agencyExpenses.id })
+      .from(schema.agencyExpenses)
+      .where(eq(schema.agencyExpenses.dedupKey, dedupKey))
+      .limit(1);
+    if (dup.length > 0) return { status: "duplicate" };
+  } else {
+    const existing = await db
+      .select()
+      .from(schema.expenses)
+      .where(and(eq(schema.expenses.mailMessageId, messageId), eq(schema.expenses.attachmentName, cand.name)))
+      .limit(1);
+    if (existing.length > 0) return { status: "duplicate" };
+  }
 
   try {
     const ocr = await ocrReceipt(cand.buf, cand.mime);
@@ -232,17 +255,19 @@ export async function processReceiptCandidate(
     const category = guessCategory(ocr.rawText, ocr.vendorName, ocr.spentTime);
     const spent = ocr.spentDate ?? receivedAt.slice(0, 10);
 
-    // 팀별 카테고리 override
+    // 팀별 카테고리 override (강제 기관경비일 땐 적용 안 함)
     let effectiveCategory: typeof category = category;
-    // 숙박 예산이 없는 팀(16:딸기17육묘, 17:딸기16산청청년, 22:딸기11장성) — 숙박 → 출장비(기관)
-    const TEAMS_NO_LODGING: number[] = [16, 17, 22];
-    if (category === "숙박" && TEAMS_NO_LODGING.includes(teamId)) effectiveCategory = "출장비";
-    // 한우7기(team 29) + 카페오늘 — 20만원 정액=임차비, 그 외=다과
-    if (teamId === 29 && ocr.vendorName && /카페오늘/.test(ocr.vendorName)) {
-      effectiveCategory = total === 200000 ? "임차비" : "다과";
+    if (!forceAgencyKind) {
+      // 숙박 예산이 없는 팀(16:딸기17육묘, 17:딸기16산청청년, 22:딸기11장성) — 숙박 → 출장비(기관)
+      const TEAMS_NO_LODGING: number[] = [16, 17, 22];
+      if (category === "숙박" && TEAMS_NO_LODGING.includes(teamId)) effectiveCategory = "출장비";
+      // 한우7기(team 29) + 카페오늘 — 20만원 정액=임차비, 그 외=다과
+      if (teamId === 29 && ocr.vendorName && /카페오늘/.test(ocr.vendorName)) {
+        effectiveCategory = total === 200000 ? "임차비" : "다과";
+      }
     }
 
-    const isAgencyTravel = effectiveCategory === "출장비";
+    const isAgencyTravel = !!forceAgencyKind || effectiveCategory === "출장비";
     const subDir = isAgencyTravel ? "agency-travel" : String(teamId);
     const ext = pickExt(cand.name);
     const safeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -268,17 +293,10 @@ export async function processReceiptCandidate(
     const storedPath = up.ok && up.fileId ? `drive:${up.fileId}` : relPath.replace(/\\/g, "/");
 
     if (isAgencyTravel) {
-      // agency_expenses 는 mailMessageId 컬럼이 없어 memo 태그(#<id>#)로 중복 방지
-      const safeId = messageId.replace(/[%_\s]/g, "");
-      const tag = `#${safeId}#`;
-      const dup = await db
-        .select({ id: schema.agencyExpenses.id })
-        .from(schema.agencyExpenses)
-        .where(like(schema.agencyExpenses.memo, `%${tag}%`))
-        .limit(1);
-      if (dup.length > 0) return { status: "duplicate" };
+      const kind = forceAgencyKind ?? "출장비";
       await db.insert(schema.agencyExpenses).values({
-        kind: "출장비",
+        kind,
+        subcategory: toAgencySubcategory(category),
         spentDate: spent,
         supplyAmount: supply,
         vatAmount: vat,
@@ -289,11 +307,12 @@ export async function processReceiptCandidate(
         vendorCeo: ocr.vendorCeo,
         cardType: ocr.cardType,
         cardLast4: ocr.cardLast4,
-        memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr}) ${tag}`,
+        memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr})`,
         receiptFilePath: storedPath,
         receiptMimeType: mimeType,
+        dedupKey,
       });
-      return { status: "created", detail: "기관정산(출장비)" };
+      return { status: "created", detail: `기관정산(${kind})` };
     }
 
     let autoSessionNo: number | null = subjectSession;
