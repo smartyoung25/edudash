@@ -144,7 +144,25 @@ export default async function SessionCategoryPage({
                         {e.vendorCeo && <div className="text-xs text-muted-foreground">{e.vendorCeo} · {e.vendorType || "-"}</div>}
                         {e.memo && <div className="text-xs text-muted-foreground italic">{e.memo}</div>}
                         <div className="mt-1 flex items-center gap-1 flex-wrap">
-                          {e.receiptFilePath && <ReceiptViewer expenseId={e.id} mimeType={e.receiptMimeType} />}
+                          {e.receiptFilePath && (
+                            <ReceiptViewer
+                              expenseId={e.id}
+                              mimeType={e.receiptMimeType}
+                              initial={{
+                                spentDate: e.spentDate,
+                                category: e.category,
+                                vendorName: e.vendorName,
+                                vendorCeo: e.vendorCeo,
+                                vendorBizNo: e.vendorBizNo,
+                                vendorType: e.vendorType,
+                                supplyAmount: e.supplyAmount,
+                                vatAmount: e.vatAmount,
+                                totalAmount: e.totalAmount,
+                                memo: e.memo,
+                                docType: e.docType,
+                              }}
+                            />
+                          )}
                           {(category === "강사비" || category === "퍼실리테이터비용") && (
                             <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} label="지급처리" />
                           )}
