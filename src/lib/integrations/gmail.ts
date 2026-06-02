@@ -13,6 +13,7 @@ export interface MailSyncResult {
   newAttachments?: number;
   unclassified?: number;
   expensesCreated?: number;
+  alreadyProcessed?: number;
 }
 
 const ALLOWED_EXT = [".pdf", ".hwp", ".docx", ".xlsx", ".jpg", ".jpeg", ".png"];
@@ -71,6 +72,7 @@ export async function pollMailbox(opts?: {
   let newAttachments = 0;
   let unclassified = 0;
   let expensesCreated = 0;
+  let alreadyProcessed = 0;
 
   // 허용 발신자(코디·교수·앱 사용자 이메일)만 수집 — 사업 무관 메일 과수집 방지.
   // opts.fromEmail 이 지정되면 그 발신자만 보므로 허용목록은 사용하지 않음.
@@ -138,6 +140,7 @@ export async function pollMailbox(opts?: {
         .where(eq(schema.mailLog.messageId, messageIdHeader))
         .limit(1);
       if (existing.length > 0) {
+        alreadyProcessed++;
         // already processed in a prior run — still mark read so we stop seeing it
         if (!skipMarkRead) {
           await gmail.users.messages.modify({ userId, id: ref.id, requestBody: { removeLabelIds: ["UNREAD"] } });
@@ -264,14 +267,20 @@ export async function pollMailbox(opts?: {
       }
     }
 
+    const message =
+      newMails === 0 && alreadyProcessed > 0
+        ? `이미 수집됨 — 해당 기간 메일 ${alreadyProcessed}건은 모두 처리 완료 (신규 0건)`
+        : `${newMails}건 처리, 첨부 ${newAttachments}건, 미분류 ${unclassified}건` +
+          (expensesCreated ? `, 정산반영 ${expensesCreated}건` : "") +
+          (alreadyProcessed ? ` · 기수집 ${alreadyProcessed}건 제외` : "");
     return {
       ok: true,
-      message: `${newMails}건 처리, 첨부 ${newAttachments}건, 미분류 ${unclassified}건` +
-        (expensesCreated ? `, 정산반영 ${expensesCreated}건` : ""),
+      message,
       newMails,
       newAttachments,
       unclassified,
       expensesCreated,
+      alreadyProcessed,
     };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "알 수 없는 오류" };
