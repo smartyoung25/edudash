@@ -35,6 +35,25 @@ export function ResolveDialog({ teams, unclassified }: { teams: Team[]; unclassi
     });
   }
 
+  function remove() {
+    if (!selectedId) return;
+    const name = currentDoc?.fileName ?? "이 서류";
+    if (!confirm(`"${name}"를 삭제할까요?\n사업과 무관한 서류라면 삭제하세요. Drive 파일도 휴지통으로 이동됩니다.`)) return;
+    startTransition(async () => {
+      const res = await fetch(`/api/documents/${Number(selectedId)}`, { method: "DELETE" });
+      if (res.ok) {
+        // 다음 미분류 서류로 선택 이동
+        const rest = unclassified.filter((d) => d.id !== Number(selectedId));
+        setSelectedId(String(rest[0]?.id ?? ""));
+        setTeamId(""); setDocType("");
+        router.refresh();
+        if (rest.length === 0) setOpen(false);
+      } else {
+        alert("삭제 실패: 권한 또는 서버 오류");
+      }
+    });
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -79,9 +98,14 @@ export function ResolveDialog({ teams, unclassified }: { teams: Team[]; unclassi
               </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>취소</Button>
-            <Button type="submit" disabled={isPending || !teamId || !docType}>분류</Button>
+          <DialogFooter className="sm:justify-between">
+            <Button type="button" variant="destructive" disabled={isPending || !selectedId} onClick={remove}>
+              삭제 (사업 무관)
+            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>취소</Button>
+              <Button type="submit" disabled={isPending || !teamId || !docType}>분류</Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

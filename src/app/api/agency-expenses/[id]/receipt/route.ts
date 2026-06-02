@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { db, schema } from "@/db/client";
 import { requireRole } from "@/lib/auth";
+import { downloadDriveFile } from "@/lib/integrations/drive";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const rows = await db.select().from(schema.agencyExpenses).where(eq(schema.agencyExpenses.id, Number(id))).limit(1);
   const e = rows[0];
   if (!e || !e.receiptFilePath) return NextResponse.json({ error: "파일 없음" }, { status: 404 });
+
+  // Drive에 저장된 영수증 (drive:<fileId>) — 클라우드에서 스트리밍
+  if (e.receiptFilePath.startsWith("drive:")) {
+    const dl = await downloadDriveFile(e.receiptFilePath.slice("drive:".length));
+    if (!dl.ok) return NextResponse.json({ error: "Drive 파일 조회 실패" }, { status: 404 });
+    return new NextResponse(new Uint8Array(dl.buf), {
+      headers: {
+        "Content-Type": e.receiptMimeType || dl.mimeType || "application/octet-stream",
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  }
+
   const fullPath = path.join(process.cwd(), e.receiptFilePath);
   if (!fs.existsSync(fullPath)) return NextResponse.json({ error: "디스크에 없음" }, { status: 404 });
   const buf = fs.readFileSync(fullPath);

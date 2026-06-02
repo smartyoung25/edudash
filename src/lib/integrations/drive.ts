@@ -197,6 +197,35 @@ export async function downloadDriveFile(fileId: string): Promise<{ ok: true; nam
 }
 
 /**
+ * filePath(webViewLink 또는 fileId 문자열)에서 Drive 파일 ID 추출.
+ */
+export function extractDriveFileId(s: string): string | null {
+  if (!s) return null;
+  const m1 = s.match(/\/d\/([\w-]{20,})/);          // .../file/d/<id>/view
+  if (m1) return m1[1];
+  const m2 = s.match(/[?&]id=([\w-]{20,})/);          // ...?id=<id>
+  if (m2) return m2[1];
+  if (/^[\w-]{20,}$/.test(s.trim())) return s.trim(); // 순수 fileId
+  return null;
+}
+
+/**
+ * Drive 파일을 휴지통으로 이동 (완전 삭제 대신 안전). webViewLink/fileId 모두 허용.
+ */
+export async function deleteDriveFile(fileIdOrLink: string): Promise<{ ok: boolean; message: string }> {
+  const drive = getDriveClient();
+  if (!drive) return { ok: false, message: "Drive client not initialized" };
+  const fileId = extractDriveFileId(fileIdOrLink);
+  if (!fileId) return { ok: false, message: "fileId 추출 실패" };
+  try {
+    await drive.files.update({ fileId, requestBody: { trashed: true } });
+    return { ok: true, message: "Drive 휴지통 이동" };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Drive 삭제 실패" };
+  }
+}
+
+/**
  * Backwards-compatible wrapper for receipt uploads.
  */
 export async function uploadReceipt(opts: {

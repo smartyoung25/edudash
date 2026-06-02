@@ -1,5 +1,5 @@
 import { db, schema } from "@/db/client";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/stat-card";
@@ -19,10 +19,22 @@ export default async function DailyPage() {
   const role = (user?.role ?? "professor") as Role;
   const today = new Date().toISOString().slice(0, 10);
 
-  const [teams, todaySessions, todayReports, status] = await Promise.all([
+  // 이번 주(월~일) 범위
+  const now = new Date();
+  const day = now.getDay(); // 0=일 … 6=토
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((day + 6) % 7)); // 이번 주 월요일
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const weekStart = monday.toISOString().slice(0, 10);
+  const weekEnd = sunday.toISOString().slice(0, 10);
+
+  const [teams, todaySessions, todayReports, weekSessions, weekReports, status] = await Promise.all([
     db.select().from(schema.teams),
     db.select().from(schema.sessions).where(eq(schema.sessions.scheduledDate, today)),
     db.select().from(schema.dailyReports).where(eq(schema.dailyReports.reportDate, today)),
+    db.select().from(schema.sessions).where(and(gte(schema.sessions.scheduledDate, weekStart), lte(schema.sessions.scheduledDate, weekEnd))),
+    db.select().from(schema.dailyReports).where(and(gte(schema.dailyReports.reportDate, weekStart), lte(schema.dailyReports.reportDate, weekEnd))),
     db.select().from(schema.integrationStatus),
   ]);
 
@@ -46,6 +58,22 @@ export default async function DailyPage() {
   const totalAttended = rows.reduce((s, r) => s + (r.report?.attended ?? 0), 0);
   const totalAbsent = rows.reduce((s, r) => s + (r.report?.absent ?? 0), 0);
 
+  // 주간 집계 — 날짜까지 포함한 키로 매칭(주중 같은 차시 중복 방지)
+  const weekReportKey = new Map(weekReports.map((r) => [`${r.reportDate}:${r.teamId}:${r.sessionNo}`, r]));
+  const weekRows = weekSessions
+    .map((s) => ({
+      session: s,
+      team: teamMap.get(s.teamId),
+      report: weekReportKey.get(`${s.scheduledDate}:${s.teamId}:${s.sessionNo}`) ?? null,
+    }))
+    .filter((r) => r.team);
+
+  const weekScheduledTeamCount = new Set(weekRows.map((r) => r.team!.id)).size;
+  const weekEnteredCount = weekRows.filter((r) => r.report).length;
+  const weekMissingCount = weekRows.length - weekEnteredCount;
+  const weekTotalAttended = weekRows.reduce((s, r) => s + (r.report?.attended ?? 0), 0);
+  const weekTotalAbsent = weekRows.reduce((s, r) => s + (r.report?.absent ?? 0), 0);
+
   return (
     <div>
       <PageHeader
@@ -64,6 +92,16 @@ export default async function DailyPage() {
           <StatCard label="입력 완료" value={enteredCount} icon={CheckCircle2} accent="blue" />
           <StatCard label="미입력" value={missingCount} icon={AlertCircle} accent="amber" />
           <StatCard label="출석/불참 합계" value={`${totalAttended} / ${totalAbsent}`} icon={Users} accent="rose" />
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold">주간현황 ({formatDate(weekStart)} ~ {formatDate(weekEnd)})</h2>
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard label="주간 예정 팀" value={weekScheduledTeamCount} icon={CalendarDays} accent="violet" />
+            <StatCard label="입력 완료" value={weekEnteredCount} icon={CheckCircle2} accent="blue" />
+            <StatCard label="미입력" value={weekMissingCount} icon={AlertCircle} accent="amber" />
+            <StatCard label="출석/불참 합계" value={`${weekTotalAttended} / ${weekTotalAbsent}`} icon={Users} accent="orange" />
+          </div>
         </div>
 
         <Card className="p-4 bg-muted/30">

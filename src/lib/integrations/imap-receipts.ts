@@ -10,7 +10,7 @@ import { simpleParser, type ParsedMail, type Attachment } from "mailparser";
 import { db, schema } from "@/db/client";
 import { eq, and } from "drizzle-orm";
 import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
-import { downloadDriveFile } from "./drive";
+import { downloadDriveFile, uploadDocumentToDrive } from "./drive";
 import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
 import AdmZip from "adm-zip";
 import fs from "fs";
@@ -371,12 +371,30 @@ export async function importReceiptsFromMail(opts?: {
 
               const isAgencyTravel = effectiveCategory === "출장비";
               const subDir = isAgencyTravel ? "agency-travel" : String(teamId);
-              ensureDir(path.join(RECEIPTS_DIR, subDir));
               const ext = pickExt(cand.name);
               const safeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
               const relPath = path.join(RECEIPTS_DIR, subDir, `${safeId}${ext}`);
-              fs.writeFileSync(relPath, cand.buf);
               const mimeType = cand.mime || guessImageMime(cand.name);
+
+              // 로컬 캐시 저장 (Vercel 등 읽기전용 FS 환경에서는 best-effort)
+              try {
+                ensureDir(path.join(RECEIPTS_DIR, subDir));
+                fs.writeFileSync(relPath, cand.buf);
+              } catch {}
+
+              // Drive 업로드 — 배포(운영) 환경에서도 영수증 이미지 조회 가능하도록 클라우드에 저장
+              const driveTeamName = isAgencyTravel ? "기관경비" : (teams.find((t) => t.id === teamId)?.name ?? null);
+              const driveMonth = Number(spent.slice(5, 7)) || null;
+              const up = await uploadDocumentToDrive({
+                teamName: driveTeamName,
+                docType: isAgencyTravel ? "출장비영수증" : "경비영수증",
+                month: driveMonth,
+                fileName: `receipt_${safeId}${ext}`,
+                bytes: cand.buf,
+              });
+              if (!up.ok) summary.errors.push(`Drive 업로드 실패(${cand.name}): ${up.message}`);
+              // 우선순위: Drive 파일ID(drive:<id>) → 실패 시 로컬 상대경로(레거시 호환)
+              const storedPath = up.ok && up.fileId ? `drive:${up.fileId}` : relPath.replace(/\\/g, "/");
 
               if (isAgencyTravel) {
                 // 출장비 → 기관경비 (agency_expenses)
@@ -393,7 +411,7 @@ export async function importReceiptsFromMail(opts?: {
                   cardType: ocr.cardType,
                   cardLast4: ocr.cardLast4,
                   memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr})`,
-                  receiptFilePath: relPath.replace(/\\/g, "/"),
+                  receiptFilePath: storedPath,
                   receiptMimeType: mimeType,
                 });
               } else {
@@ -423,7 +441,7 @@ export async function importReceiptsFromMail(opts?: {
                   mailFrom: fromAddr,
                   mailReceivedAt: receivedAt,
                   attachmentName: cand.name,
-                  receiptFilePath: relPath.replace(/\\/g, "/"),
+                  receiptFilePath: storedPath,
                   receiptMimeType: mimeType,
                 });
               }
