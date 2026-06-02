@@ -4,19 +4,45 @@
  */
 
 import { ImageAnnotatorClient } from "@google-cloud/vision";
+import { env } from "../env";
 
 let _client: ImageAnnotatorClient | null = null;
 
 export function isOcrEnabled(): boolean {
-  return !!process.env.GOOGLE_VISION_KEY_PATH;
+  // 로컬: 키파일 경로 / 운영(서버리스): 서비스계정 JSON
+  return !!process.env.GOOGLE_VISION_KEY_PATH || !!env.GOOGLE_SERVICE_ACCOUNT_JSON;
 }
 
 function getClient(): ImageAnnotatorClient {
   if (_client) return _client;
+
+  // 1) 키파일이 실제 디스크에 있으면 사용 (로컬 개발)
   const keyFile = process.env.GOOGLE_VISION_KEY_PATH;
-  if (!keyFile) throw new Error("GOOGLE_VISION_KEY_PATH 환경변수가 없습니다");
-  _client = new ImageAnnotatorClient({ keyFilename: keyFile });
-  return _client;
+  if (keyFile) {
+    try {
+      const fs = require("fs") as typeof import("fs");
+      if (fs.existsSync(keyFile)) {
+        _client = new ImageAnnotatorClient({ keyFilename: keyFile });
+        return _client;
+      }
+    } catch {}
+  }
+
+  // 2) 서비스계정 JSON 으로 인증 (Vercel 등 서버리스 — 파일이 배포되지 않음)
+  const raw = env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (raw) {
+    const parsed = JSON.parse(raw) as { client_email: string; private_key: string; project_id?: string };
+    _client = new ImageAnnotatorClient({
+      credentials: {
+        client_email: parsed.client_email,
+        private_key: parsed.private_key.replace(/\\n/g, "\n"),
+      },
+      projectId: parsed.project_id,
+    });
+    return _client;
+  }
+
+  throw new Error("OCR 자격증명 없음 (GOOGLE_VISION_KEY_PATH 파일 또는 GOOGLE_SERVICE_ACCOUNT_JSON 필요)");
 }
 
 /** 이미지/PDF 버퍼에서 텍스트 추출 */

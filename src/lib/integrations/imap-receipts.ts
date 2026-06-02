@@ -140,7 +140,7 @@ function extractEmbeddedImages(buf: Buffer, filename: string): { name: string; b
 }
 
 /** 메일 본문/제목에서 N회차 추출 */
-function detectSessionNo(text: string): number | null {
+export function detectSessionNo(text: string): number | null {
   const m = text.match(/(\d{1,2})\s*(?:회\s*차|차\s*시)/);
   return m ? parseInt(m[1], 10) : null;
 }
@@ -181,6 +181,147 @@ function guessCategory(
   spentTime: string | null
 ): ExpenseCategory {
   return classifyExpense({ text, vendorName, spentTime }).category;
+}
+
+export interface ReceiptContext {
+  teamId: number;
+  fromAddr: string;
+  subject: string;
+  messageId: string;
+  receivedAt: string;          // ISO
+  subjectSession: number | null;
+  teams: { id: number; name: string }[];
+}
+
+export type ReceiptOutcome =
+  | { status: "created"; detail: string }
+  | { status: "duplicate" }
+  | { status: "skipped"; detail: string }
+  | { status: "error"; detail: string };
+
+/**
+ * 영수증 후보 1건을 OCR → 파싱 → 카테고리/팀 override → 출장비=기관 라우팅 →
+ * 회차 배정 → 중복체크 → expenses/agencyExpenses 등록.
+ * 서류 수집(gmail)·영수증 임포트(imap) 양쪽에서 공용으로 사용.
+ */
+export async function processReceiptCandidate(
+  cand: { name: string; buf: Buffer; mime?: string },
+  ctx: ReceiptContext
+): Promise<ReceiptOutcome> {
+  const { teamId, fromAddr, subject, messageId, receivedAt, subjectSession, teams } = ctx;
+
+  // 중복 확인 (message-id + 첨부파일명)
+  const existing = await db
+    .select()
+    .from(schema.expenses)
+    .where(and(eq(schema.expenses.mailMessageId, messageId), eq(schema.expenses.attachmentName, cand.name)))
+    .limit(1);
+  if (existing.length > 0) return { status: "duplicate" };
+
+  try {
+    const ocr = await ocrReceipt(cand.buf, cand.mime);
+    if (!RECEIPT_KEYWORDS.test(ocr.rawText)) return { status: "skipped", detail: "영수증 키워드 없음" };
+
+    const _taxi = isTaxiReceipt(ocr.rawText) || isRideHailVendor(ocr.vendorName);
+    const supply = _taxi ? (ocr.totalAmount ?? ocr.supplyAmount ?? 0) : (ocr.supplyAmount ?? 0);
+    const vat = _taxi ? 0 : (ocr.vatAmount ?? 0);
+    const total = ocr.totalAmount ?? supply + vat;
+    if (total <= 0) return { status: "skipped", detail: "금액 없음" };
+    if (total > 100_000_000) return { status: "skipped", detail: "금액 과다(사업자번호 오인식 가능)" };
+
+    const category = guessCategory(ocr.rawText, ocr.vendorName, ocr.spentTime);
+    const spent = ocr.spentDate ?? receivedAt.slice(0, 10);
+
+    // 팀별 카테고리 override
+    let effectiveCategory: typeof category = category;
+    // 숙박 예산이 없는 팀(16:딸기17육묘, 17:딸기16산청청년, 22:딸기11장성) — 숙박 → 출장비(기관)
+    const TEAMS_NO_LODGING: number[] = [16, 17, 22];
+    if (category === "숙박" && TEAMS_NO_LODGING.includes(teamId)) effectiveCategory = "출장비";
+    // 한우7기(team 29) + 카페오늘 — 20만원 정액=임차비, 그 외=다과
+    if (teamId === 29 && ocr.vendorName && /카페오늘/.test(ocr.vendorName)) {
+      effectiveCategory = total === 200000 ? "임차비" : "다과";
+    }
+
+    const isAgencyTravel = effectiveCategory === "출장비";
+    const subDir = isAgencyTravel ? "agency-travel" : String(teamId);
+    const ext = pickExt(cand.name);
+    const safeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const relPath = path.join(RECEIPTS_DIR, subDir, `${safeId}${ext}`);
+    const mimeType = cand.mime || guessImageMime(cand.name);
+
+    // 로컬 캐시 저장 (읽기전용 FS 환경에서는 best-effort)
+    try {
+      ensureDir(path.join(RECEIPTS_DIR, subDir));
+      fs.writeFileSync(relPath, cand.buf);
+    } catch {}
+
+    // Drive 업로드 — 배포 환경에서도 영수증 이미지 조회 가능
+    const driveTeamName = isAgencyTravel ? "기관경비" : (teams.find((t) => t.id === teamId)?.name ?? null);
+    const driveMonth = Number(spent.slice(5, 7)) || null;
+    const up = await uploadDocumentToDrive({
+      teamName: driveTeamName,
+      docType: isAgencyTravel ? "출장비영수증" : "경비영수증",
+      month: driveMonth,
+      fileName: `receipt_${safeId}${ext}`,
+      bytes: cand.buf,
+    });
+    const storedPath = up.ok && up.fileId ? `drive:${up.fileId}` : relPath.replace(/\\/g, "/");
+
+    if (isAgencyTravel) {
+      await db.insert(schema.agencyExpenses).values({
+        kind: "출장비",
+        spentDate: spent,
+        supplyAmount: supply,
+        vatAmount: vat,
+        totalAmount: total,
+        vendorType: ocr.vendorType,
+        vendorBizNo: ocr.vendorBizNo,
+        vendorName: ocr.vendorName,
+        vendorCeo: ocr.vendorCeo,
+        cardType: ocr.cardType,
+        cardLast4: ocr.cardLast4,
+        memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr})`,
+        receiptFilePath: storedPath,
+        receiptMimeType: mimeType,
+      });
+      return { status: "created", detail: "기관정산(출장비)" };
+    }
+
+    let autoSessionNo: number | null = subjectSession;
+    if (autoSessionNo == null && AUTO_SESSION_CATEGORIES.has(category)) {
+      const teamSessions = await db
+        .select({ sessionNo: schema.sessions.sessionNo, scheduledDate: schema.sessions.scheduledDate })
+        .from(schema.sessions)
+        .where(eq(schema.sessions.teamId, teamId));
+      autoSessionNo = pickNearestSessionNo(spent, teamSessions);
+    }
+    await db.insert(schema.expenses).values({
+      teamId,
+      sessionNo: autoSessionNo,
+      spentDate: spent,
+      category,
+      supplyAmount: supply,
+      vatAmount: vat,
+      totalAmount: total,
+      vendorType: ocr.vendorType,
+      vendorBizNo: ocr.vendorBizNo,
+      vendorName: ocr.vendorName,
+      vendorCeo: ocr.vendorCeo,
+      cardType: ocr.cardType,
+      cardLast4: ocr.cardLast4,
+      memo: `메일 자동 수집 — ${subject.slice(0, 50)}`,
+      source: "mail",
+      mailMessageId: messageId,
+      mailFrom: fromAddr,
+      mailReceivedAt: receivedAt,
+      attachmentName: cand.name,
+      receiptFilePath: storedPath,
+      receiptMimeType: mimeType,
+    });
+    return { status: "created", detail: `팀정산(${category})` };
+  } catch (e: any) {
+    return { status: "error", detail: e?.message || String(e) };
+  }
 }
 
 export async function importReceiptsFromMail(opts?: {
@@ -320,135 +461,16 @@ export async function importReceiptsFromMail(opts?: {
           }
 
           for (const cand of receiptCandidates) {
-            // 중복 확인 (message-id + 첨부파일명)
-            const existing = await db
-              .select()
-              .from(schema.expenses)
-              .where(
-                and(
-                  eq(schema.expenses.mailMessageId, messageId),
-                  eq(schema.expenses.attachmentName, cand.name)
-                )
-              )
-              .limit(1);
-            if (existing.length > 0) {
+            const outcome = await processReceiptCandidate(cand, {
+              teamId, fromAddr, subject, messageId, receivedAt, subjectSession, teams,
+            });
+            if (outcome.status === "duplicate") {
               summary.skippedDuplicate++;
               continue;
             }
-
             summary.attachmentsProcessed++;
-            try {
-              const ocr = await ocrReceipt(cand.buf, cand.mime);
-              // 영수증 키워드 없으면 스킵
-              if (!RECEIPT_KEYWORDS.test(ocr.rawText)) continue;
-              // 금액 정보가 전혀 없으면 스킵
-              const _taxi = isTaxiReceipt(ocr.rawText) || isRideHailVendor(ocr.vendorName);
-              const supply = _taxi ? (ocr.totalAmount ?? ocr.supplyAmount ?? 0) : (ocr.supplyAmount ?? 0);
-              const vat = _taxi ? 0 : (ocr.vatAmount ?? 0);
-              const total = ocr.totalAmount ?? supply + vat;
-              if (total <= 0) continue;
-              // 비현실적으로 큰 금액(>1억) 차단 — 사업자번호를 잘못 잡았을 가능성
-              if (total > 100_000_000) continue;
-
-              const category = guessCategory(ocr.rawText, ocr.vendorName, ocr.spentTime);
-              const spent = ocr.spentDate ?? receivedAt.slice(0, 10);
-
-              // 영수증 이미지 파일 저장 (출장비는 기관경비 폴더로)
-              // 팀별 카테고리 override 규칙
-              let effectiveCategory: typeof category = category;
-
-              // 1) 숙박 예산이 없는 팀 — 숙박 → 출장비(기관경비) 자동 라우팅
-              //   16: 딸기17육묘, 17: 딸기16산청청년, 22: 딸기11 장성
-              const TEAMS_NO_LODGING: number[] = [16, 17, 22];
-              if (category === "숙박" && TEAMS_NO_LODGING.includes(teamId)) {
-                effectiveCategory = "출장비";
-              }
-
-              // 2) 한우7기(team 29) + 카페오늘 — 20만원 정액=임차비, 그 외=다과
-              if (teamId === 29 && ocr.vendorName && /카페오늘/.test(ocr.vendorName)) {
-                effectiveCategory = total === 200000 ? "임차비" : "다과";
-              }
-
-              const isAgencyTravel = effectiveCategory === "출장비";
-              const subDir = isAgencyTravel ? "agency-travel" : String(teamId);
-              const ext = pickExt(cand.name);
-              const safeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-              const relPath = path.join(RECEIPTS_DIR, subDir, `${safeId}${ext}`);
-              const mimeType = cand.mime || guessImageMime(cand.name);
-
-              // 로컬 캐시 저장 (Vercel 등 읽기전용 FS 환경에서는 best-effort)
-              try {
-                ensureDir(path.join(RECEIPTS_DIR, subDir));
-                fs.writeFileSync(relPath, cand.buf);
-              } catch {}
-
-              // Drive 업로드 — 배포(운영) 환경에서도 영수증 이미지 조회 가능하도록 클라우드에 저장
-              const driveTeamName = isAgencyTravel ? "기관경비" : (teams.find((t) => t.id === teamId)?.name ?? null);
-              const driveMonth = Number(spent.slice(5, 7)) || null;
-              const up = await uploadDocumentToDrive({
-                teamName: driveTeamName,
-                docType: isAgencyTravel ? "출장비영수증" : "경비영수증",
-                month: driveMonth,
-                fileName: `receipt_${safeId}${ext}`,
-                bytes: cand.buf,
-              });
-              if (!up.ok) summary.errors.push(`Drive 업로드 실패(${cand.name}): ${up.message}`);
-              // 우선순위: Drive 파일ID(drive:<id>) → 실패 시 로컬 상대경로(레거시 호환)
-              const storedPath = up.ok && up.fileId ? `drive:${up.fileId}` : relPath.replace(/\\/g, "/");
-
-              if (isAgencyTravel) {
-                // 출장비 → 기관경비 (agency_expenses)
-                await db.insert(schema.agencyExpenses).values({
-                  kind: "출장비",
-                  spentDate: spent,
-                  supplyAmount: supply,
-                  vatAmount: vat,
-                  totalAmount: total,
-                  vendorType: ocr.vendorType,
-                  vendorBizNo: ocr.vendorBizNo,
-                  vendorName: ocr.vendorName,
-                  vendorCeo: ocr.vendorCeo,
-                  cardType: ocr.cardType,
-                  cardLast4: ocr.cardLast4,
-                  memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr})`,
-                  receiptFilePath: storedPath,
-                  receiptMimeType: mimeType,
-                });
-              } else {
-                let autoSessionNo: number | null = subjectSession;
-                if (autoSessionNo == null && AUTO_SESSION_CATEGORIES.has(category)) {
-                  const teamSessions = await db.select({ sessionNo: schema.sessions.sessionNo, scheduledDate: schema.sessions.scheduledDate })
-                    .from(schema.sessions).where(eq(schema.sessions.teamId, teamId));
-                  autoSessionNo = pickNearestSessionNo(spent, teamSessions);
-                }
-                await db.insert(schema.expenses).values({
-                  teamId,
-                  sessionNo: autoSessionNo,
-                  spentDate: spent,
-                  category,
-                  supplyAmount: supply,
-                  vatAmount: vat,
-                  totalAmount: total,
-                  vendorType: ocr.vendorType,
-                  vendorBizNo: ocr.vendorBizNo,
-                  vendorName: ocr.vendorName,
-                  vendorCeo: ocr.vendorCeo,
-                  cardType: ocr.cardType,
-                  cardLast4: ocr.cardLast4,
-                  memo: `메일 자동 수집 — ${subject.slice(0, 50)}`,
-                  source: "mail",
-                  mailMessageId: messageId,
-                  mailFrom: fromAddr,
-                  mailReceivedAt: receivedAt,
-                  attachmentName: cand.name,
-                  receiptFilePath: storedPath,
-                  receiptMimeType: mimeType,
-                });
-              }
-              summary.expensesCreated++;
-            } catch (e: any) {
-              summary.errors.push(`${cand.name}: ${e?.message || e}`);
-            }
+            if (outcome.status === "created") summary.expensesCreated++;
+            else if (outcome.status === "error") summary.errors.push(`${cand.name}: ${outcome.detail}`);
           }
         } catch (e: any) {
           summary.errors.push(`uid ${uid}: ${e?.message || e}`);

@@ -4,6 +4,7 @@ import { env, isMailEnabled } from "../env";
 import { getGmailClient } from "./google-auth";
 import { uploadDocumentToDrive } from "./drive";
 import { classifyTeam, classifyDocType, detectMonth, detectSessionNo, resetClassifierCache } from "./classifier";
+import { processReceiptCandidate, detectSessionNo as detectReceiptSessionNo } from "./imap-receipts";
 
 export interface MailSyncResult {
   ok: boolean;
@@ -11,6 +12,7 @@ export interface MailSyncResult {
   newMails?: number;
   newAttachments?: number;
   unclassified?: number;
+  expensesCreated?: number;
 }
 
 const ALLOWED_EXT = [".pdf", ".hwp", ".docx", ".xlsx", ".jpg", ".jpeg", ".png"];
@@ -68,6 +70,7 @@ export async function pollMailbox(opts?: {
   let newMails = 0;
   let newAttachments = 0;
   let unclassified = 0;
+  let expensesCreated = 0;
 
   // 쿼리 조립: 기본은 is:unread has:attachment (cron 호환).
   // opts 들어오면 includeRead 가 true 면 is:unread 제거, fromEmail/sinceDays 필터 추가.
@@ -142,6 +145,8 @@ export async function pollMailbox(opts?: {
         fileName: firstAttachmentName,
       });
       const teamName = teamNameLookup(teamId, teams);
+      // 영수증 회차 자동배정용 — 제목/본문에서 N차시 추출
+      const receiptSession = detectReceiptSessionNo(subject) ?? detectReceiptSessionNo(bodyText);
       let attachmentSaved = 0;
 
       for (const part of walkParts(payload)) {
@@ -202,6 +207,19 @@ export async function pollMailbox(opts?: {
         attachmentSaved++;
         newAttachments++;
         if (docType === "미분류") unclassified++;
+
+        // 경비영수증(이미지/PDF) → OCR 후 팀별/기관 정산에 자동 반영
+        if (teamId && docType === "경비영수증" && [".pdf", ".jpg", ".jpeg", ".png"].includes(ext)) {
+          try {
+            const outcome = await processReceiptCandidate(
+              { name: filename, buf: bytes, mime: ext === ".pdf" ? "application/pdf" : undefined },
+              { teamId, fromAddr: fromAddress, subject, messageId: messageIdHeader, receivedAt, subjectSession: receiptSession, teams },
+            );
+            if (outcome.status === "created") expensesCreated++;
+          } catch {
+            // 정산 반영 실패해도 서류 수집 자체는 유지
+          }
+        }
       }
 
       await db.insert(schema.mailLog).values({
@@ -227,10 +245,12 @@ export async function pollMailbox(opts?: {
 
     return {
       ok: true,
-      message: `${newMails}건 처리, 첨부 ${newAttachments}건, 미분류 ${unclassified}건`,
+      message: `${newMails}건 처리, 첨부 ${newAttachments}건, 미분류 ${unclassified}건` +
+        (expensesCreated ? `, 정산반영 ${expensesCreated}건` : ""),
       newMails,
       newAttachments,
       unclassified,
+      expensesCreated,
     };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "알 수 없는 오류" };
