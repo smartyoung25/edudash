@@ -227,18 +227,20 @@ export function parseReceipt(text: string): ParsedReceipt {
   // 거래처명 키워드 (가맹점명/상호명 등 - 카드사명 제외)
   const VENDOR_LABEL_RE = /(가맹점\s*명?|상\s*호|업\s*체\s*명?|사업장명|판매자\s*상호|판매자\s*명?|법인명)/;
   const CARDISSUER_RE = /(매입사|카드사|발행사|입금사|승인사)/;
+  // 상호명으로 잘못 잡히는 영수증 안내문구·라벨 (KICC 안내, 고객용/매출전표 등)
+  const VENDOR_NOISE_RE = /(가맹점\s*주소|실제와\s*다른|신고\s*안내|포\s*상|고\s*객\s*용|가맹점\s*용|매\s*출\s*전\s*표|신\s*용\s*카\s*드\s*전\s*표|EasyCheck|KICC)/i;
 
   for (let i = 0; i < supplierLines.length; i++) {
     const line = supplierLines[i];
-    // 같은 줄에 라벨+값
-    if (!vendorName && VENDOR_LABEL_RE.test(line) && !CARDISSUER_RE.test(line)) {
+    // 같은 줄에 라벨+값 (안내문구 줄은 제외)
+    if (!vendorName && VENDOR_LABEL_RE.test(line) && !CARDISSUER_RE.test(line) && !VENDOR_NOISE_RE.test(line)) {
       const v = line.replace(/.*?(가맹점명?|상호|업체명?|사업장명|판매자\s*상호|판매자\s*명?|법인명)\s*[:：]?\s*/, "").trim();
-      if (v && v.length >= 2 && v.length < 40 && !/^\d/.test(v) && !/^(NH|IBK|국민|신한|삼성|현대|롯데|BC|비씨|농협)\s*카드/.test(v) && !CARDISSUER_RE.test(v)) {
+      if (v && v.length >= 2 && v.length < 40 && !/^\d/.test(v) && !/^(NH|IBK|국민|신한|삼성|현대|롯데|BC|비씨|농협)\s*카드/.test(v) && !CARDISSUER_RE.test(v) && !VENDOR_NOISE_RE.test(v)) {
         vendorName = v;
       } else if (!v || v.length < 2) {
         // 다음 줄에 값이 있을 수 있음
         const next = supplierLines[i + 1]?.trim();
-        if (next && next.length >= 2 && next.length < 40 && !/^\d/.test(next) && !CARDISSUER_RE.test(next) && !/^(NH|IBK|국민|신한|삼성|현대|롯데|BC|비씨|농협)\s*카드/.test(next)) {
+        if (next && next.length >= 2 && next.length < 40 && !/^\d/.test(next) && !CARDISSUER_RE.test(next) && !VENDOR_NOISE_RE.test(next) && !/^(NH|IBK|국민|신한|삼성|현대|롯데|BC|비씨|농협)\s*카드/.test(next)) {
           vendorName = next;
         }
       }
@@ -272,6 +274,7 @@ export function parseReceipt(text: string): ParsedReceipt {
       /^[A-Z]\s*$/,
     ];
     if (BAD.some((re) => re.test(vendorName!))) vendorName = null;
+    else if (VENDOR_NOISE_RE.test(vendorName)) vendorName = null;
     else if (vendorName.length < 2 || vendorName.length > 30) vendorName = null;
   }
   // 폴백 1: 사업자번호 위/아래 1-2줄에서 상호 찾기 (영수증 상단)
@@ -281,7 +284,7 @@ export function parseReceipt(text: string): ParsedReceipt {
       if (j < 0 || j >= lines.length) continue;
       const l = lines[j].replace(/[\[\]【】]/g, "").trim();
       // 한글/영문/㈜ 등으로 2-20자, "영수증" 같은 헤더 제외
-      if (/^[가-힣A-Za-z0-9()㈜·\.\-]{2,25}$/.test(l) && !/(상호|업체|사업|번호|등록|대표|영수증|증\s*명|TAX|INVOICE)/i.test(l)) {
+      if (/^[가-힣A-Za-z0-9()㈜·\.\-]{2,25}$/.test(l) && !/(상호|업체|사업|번호|등록|대표|영수증|증\s*명|TAX|INVOICE)/i.test(l) && !VENDOR_NOISE_RE.test(l)) {
         vendorName = l;
         break;
       }
