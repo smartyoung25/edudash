@@ -244,6 +244,8 @@ export async function processReceiptCandidate(
   try {
     const ocr = await ocrReceipt(cand.buf, cand.mime);
     if (!RECEIPT_KEYWORDS.test(ocr.rawText)) return { status: "skipped", detail: "영수증 키워드 없음" };
+    // 합계 라벨을 못 찾고 추정으로 금액을 잡은 경우 → 메모에 검토 표시
+    const reviewMark = ocr.amountFromFallback ? "⚠금액확인 " : "";
 
     const _taxi = isTaxiReceipt(ocr.rawText) || isRideHailVendor(ocr.vendorName);
     const supply = _taxi ? (ocr.totalAmount ?? ocr.supplyAmount ?? 0) : (ocr.supplyAmount ?? 0);
@@ -307,7 +309,7 @@ export async function processReceiptCandidate(
         vendorCeo: ocr.vendorCeo,
         cardType: ocr.cardType,
         cardLast4: ocr.cardLast4,
-        memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr})`,
+        memo: `${reviewMark}메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr})`,
         receiptFilePath: storedPath,
         receiptMimeType: mimeType,
         dedupKey,
@@ -337,7 +339,7 @@ export async function processReceiptCandidate(
       vendorCeo: ocr.vendorCeo,
       cardType: ocr.cardType,
       cardLast4: ocr.cardLast4,
-      memo: `메일 자동 수집 — ${subject.slice(0, 50)}`,
+      memo: `${reviewMark}메일 자동 수집 — ${subject.slice(0, 50)}`,
       source: "mail",
       mailMessageId: messageId,
       mailFrom: fromAddr,

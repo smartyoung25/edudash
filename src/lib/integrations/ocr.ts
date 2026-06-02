@@ -77,6 +77,8 @@ export interface ParsedReceipt {
   cardType: "기업카드" | "기업법인카드" | "NH법인카드" | "개인카드" | null;
   cardLast4: string | null;
   rawText: string;
+  /** 합계 라벨을 못 찾고 '가장 큰 숫자' 추정으로 금액을 잡은 경우 true → 검토 권장 */
+  amountFromFallback?: boolean;
 }
 
 // NH법인카드 카드번호 (끝 4자리 매칭)
@@ -116,6 +118,10 @@ const NON_AMOUNT_PATTERNS: RegExp[] = [
   /\b\d{6}\s*[-]\s*\d{7}\b/,                            // 주민등록번호 610423-1953817
   /주\s*민\s*등\s*록\s*번\s*호/,                          // 라벨
   /계\s*좌\s*번\s*호/,                                  // 라벨
+  /거\s*스\s*름(\s*돈)?/,                                // 거스름돈 — 현금 거래, 합계 아님
+  /잔\s*돈/,                                            // 잔돈
+  /받\s*은\s*금\s*액/,                                  // 현금 받은금액(낸 현금) — 합계 아님(거스름돈 발생)
+  /(적\s*립|포\s*인\s*트|마\s*일\s*리\s*지|머\s*니)/,      // 적립/포인트/마일리지 — 금액 아님
 ];
 
 // "수당 지급 확인서" 등 강사비 양식 인식
@@ -300,6 +306,7 @@ export function parseReceipt(text: string): ParsedReceipt {
   let supplyAmount: number | null = null;
   let vatAmount: number | null = null;
   let totalAmount: number | null = null;
+  let amountFromFallback = false;
 
   // ───────── 강사비 양식 (수당 지급 확인서, 서식17 등) 별도 처리 ─────────
   // 상단에 [강사비 | 교통비 | 숙박비 | 합계] 4열 표가 있고, 그 아래 값 행에 금액이 들어감.
@@ -368,7 +375,7 @@ export function parseReceipt(text: string): ParsedReceipt {
     // 합계: "합 계", "받을금액", 택시 "요금" 등
     if (
       totalAmount === null &&
-      /(합\s*계(\s*금\s*액)?|총\s*액|총\s*합\s*계|받\s*을\s*금\s*액|받\s*은\s*금\s*액|결\s*제\s*금\s*액|판\s*매\s*금\s*액|승\s*인\s*금\s*액|이\s*체\s*금\s*액|송\s*금\s*금\s*액|^\s*요\s*금\s*[:：]|^\s*요\s*금\s*$)/.test(line) &&
+      /(합\s*계(\s*금\s*액)?|총\s*액|총\s*합\s*계|받\s*을\s*금\s*액|결\s*제\s*금\s*액|판\s*매\s*금\s*액|승\s*인\s*금\s*액|이\s*체\s*금\s*액|송\s*금\s*금\s*액|^\s*요\s*금\s*[:：]|^\s*요\s*금\s*$)/.test(line) &&
       !/소\s*계/.test(line)
     ) {
       totalAmount = findAmountNear(lines, i, excludedForAmount);
@@ -383,7 +390,7 @@ export function parseReceipt(text: string): ParsedReceipt {
       .flatMap((l) => Array.from(l.matchAll(/([\d,]{4,})/g)).map((m) => parseInt(m[1].replace(/,/g, ""), 10)))
       // 합리적 한도 5,000,000원 — 폴백은 모호하므로 더 보수적으로
       .filter((n) => isFinite(n) && n >= 1000 && n < 5_000_000);
-    if (allAmounts.length) totalAmount = Math.max(...allAmounts);
+    if (allAmounts.length) { totalAmount = Math.max(...allAmounts); amountFromFallback = true; }
   }
   // 최종 안전망: 1억 초과는 오인식으로 보고 폐기
   if (totalAmount !== null && totalAmount >= 100_000_000) {
@@ -519,6 +526,7 @@ export function parseReceipt(text: string): ParsedReceipt {
     cardType,
     cardLast4,
     rawText: text,
+    amountFromFallback,
   };
 }
 
