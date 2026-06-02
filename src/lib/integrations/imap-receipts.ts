@@ -8,7 +8,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser, type ParsedMail, type Attachment } from "mailparser";
 import { db, schema } from "@/db/client";
-import { eq, and } from "drizzle-orm";
+import { eq, and, like } from "drizzle-orm";
 import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
 import { downloadDriveFile, uploadDocumentToDrive } from "./drive";
 import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
@@ -268,6 +268,15 @@ export async function processReceiptCandidate(
     const storedPath = up.ok && up.fileId ? `drive:${up.fileId}` : relPath.replace(/\\/g, "/");
 
     if (isAgencyTravel) {
+      // agency_expenses 는 mailMessageId 컬럼이 없어 memo 태그(#<id>#)로 중복 방지
+      const safeId = messageId.replace(/[%_\s]/g, "");
+      const tag = `#${safeId}#`;
+      const dup = await db
+        .select({ id: schema.agencyExpenses.id })
+        .from(schema.agencyExpenses)
+        .where(like(schema.agencyExpenses.memo, `%${tag}%`))
+        .limit(1);
+      if (dup.length > 0) return { status: "duplicate" };
       await db.insert(schema.agencyExpenses).values({
         kind: "출장비",
         spentDate: spent,
@@ -280,7 +289,7 @@ export async function processReceiptCandidate(
         vendorCeo: ocr.vendorCeo,
         cardType: ocr.cardType,
         cardLast4: ocr.cardLast4,
-        memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr})`,
+        memo: `메일 자동 수집 — ${subject.slice(0, 40)} (from ${fromAddr}) ${tag}`,
         receiptFilePath: storedPath,
         receiptMimeType: mimeType,
       });

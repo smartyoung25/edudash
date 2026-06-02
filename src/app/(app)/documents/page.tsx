@@ -9,6 +9,7 @@ import { AlertTriangle, Mail, ChevronRight } from "lucide-react";
 import { formatDate, cn } from "@/lib/utils";
 import { UploadButton } from "./upload-button";
 import { MailSyncButton } from "./mail-sync-button";
+import { BackfillButton } from "./backfill-button";
 import { ResolveDialog } from "./resolve-dialog";
 import { getCurrentUser } from "@/lib/auth";
 import type { Role } from "@/lib/permissions";
@@ -72,6 +73,7 @@ export default async function DocumentsPage() {
         actions={
           <div className="flex items-center gap-2">
             {canUploadDocument(role) && <UploadButton teams={teams} />}
+            {role === "admin" && <BackfillButton />}
             {role === "admin" && <MailSyncButton />}
           </div>
         }
