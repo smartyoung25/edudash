@@ -33,21 +33,27 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrRawText, setOcrRawText] = useState<string | null>(null);
   const [showRawText, setShowRawText] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [ocrNote, setOcrNote] = useState<string | null>(null);
 
   async function handleOcrUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    // 업로드한 파일은 영수증으로 첨부(저장)됨 — OCR 자동입력은 보조 기능
+    setReceiptFile(file);
     setOcrLoading(true);
     setError(null);
+    setOcrNote(null);
     setOcrRawText(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/expenses/ocr", { method: "POST", body: fd });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || "OCR 실패");
+        // OCR 실패해도 첨부는 유지 — 사용자가 직접 입력하면 됨
+        setOcrNote("자동입력은 실패했지만 영수증은 첨부됩니다. 항목을 직접 입력해 주세요.");
         return;
       }
       const p = data.parsed;
@@ -59,8 +65,8 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
       if (p.supplyAmount) setSupplyAmount(String(p.supplyAmount));
       if (p.vatAmount) setVatAmount(String(p.vatAmount));
       if (p.rawText) setOcrRawText(p.rawText);
-    } catch (err: any) {
-      setError(err?.message || "OCR 실패");
+    } catch {
+      setOcrNote("자동입력은 실패했지만 영수증은 첨부됩니다. 항목을 직접 입력해 주세요.");
     } finally {
       setOcrLoading(false);
     }
@@ -83,6 +89,9 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
     setMemo("");
     setDocType("영수증");
     setError(null);
+    setReceiptFile(null);
+    setOcrNote(null);
+    setOcrRawText(null);
   }
 
   function submit() {
@@ -91,16 +100,36 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
     if (!spentDate) return setError("사용일을 입력해주세요");
 
     startTransition(async () => {
-      const res = await fetch("/api/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teamId, spentDate, sessionNo: sessionNo || null, category,
-          supplyAmount: supply, vatAmount: vat,
-          vendorType: vendorType || null,
-          vendorBizNo, vendorName, vendorCeo, memo, docType,
-        }),
-      });
+      let res: Response;
+      if (receiptFile) {
+        // 영수증 파일 첨부 → multipart 전송 (서버가 Drive 업로드)
+        const fd = new FormData();
+        fd.append("receipt", receiptFile);
+        fd.append("teamId", String(teamId));
+        fd.append("spentDate", spentDate);
+        if (sessionNo) fd.append("sessionNo", sessionNo);
+        fd.append("category", category);
+        fd.append("supplyAmount", String(supply));
+        fd.append("vatAmount", String(vat));
+        if (vendorType) fd.append("vendorType", vendorType);
+        fd.append("vendorBizNo", vendorBizNo);
+        fd.append("vendorName", vendorName);
+        fd.append("vendorCeo", vendorCeo);
+        fd.append("memo", memo);
+        fd.append("docType", docType);
+        res = await fetch("/api/expenses", { method: "POST", body: fd });
+      } else {
+        res = await fetch("/api/expenses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            teamId, spentDate, sessionNo: sessionNo || null, category,
+            supplyAmount: supply, vatAmount: vat,
+            vendorType: vendorType || null,
+            vendorBizNo, vendorName, vendorCeo, memo, docType,
+          }),
+        });
+      }
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         setError(d.error || "저장 실패");
@@ -137,6 +166,11 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
             )}
             <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleOcrUpload} disabled={ocrLoading} />
           </label>
+
+          {receiptFile && (
+            <div className="text-xs text-emerald-700">📎 첨부됨: {receiptFile.name} <button type="button" className="ml-1 text-muted-foreground underline" onClick={() => setReceiptFile(null)}>제거</button></div>
+          )}
+          {ocrNote && <div className="text-xs text-amber-700">{ocrNote}</div>}
 
           {ocrRawText && (
             <div className="rounded-md border bg-muted/30 p-2">

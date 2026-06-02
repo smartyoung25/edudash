@@ -4,15 +4,34 @@ import { db, schema } from "@/db/client";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
 import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
+import { uploadDocumentToDrive } from "@/lib/integrations/drive";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   const session = await requireAuth();
-  const body = await req.json();
+
+  // JSON 또는 multipart(영수증 파일 첨부) 모두 지원
+  const ct = req.headers.get("content-type") || "";
+  let body: Record<string, unknown> = {};
+  let file: File | null = null;
+  if (ct.includes("multipart/form-data")) {
+    const form = await req.formData();
+    const f = form.get("receipt");
+    file = f && typeof f !== "string" ? (f as File) : null;
+    for (const [k, v] of form.entries()) {
+      if (k !== "receipt" && typeof v === "string") body[k] = v;
+    }
+  } else {
+    body = await req.json();
+  }
+
   const {
     teamId, sessionNo, spentDate, category,
     supplyAmount, vatAmount,
     vendorType, vendorBizNo, vendorName, vendorCeo, memo, docType,
-  } = body;
+  } = body as Record<string, string | undefined>;
 
   if (!teamId || !spentDate || !category) {
     return NextResponse.json({ error: "필수 항목 누락" }, { status: 400 });
@@ -32,20 +51,44 @@ export async function POST(req: Request) {
     resolvedSessionNo = pickNearestSessionNo(spentDate, sessions);
   }
 
+  // 영수증 파일 첨부 시 Drive 업로드 후 drive:<fileId> 로 저장 (운영 환경 호환)
+  let receiptFilePath: string | null = null;
+  let receiptMimeType: string | null = null;
+  if (file) {
+    const buf = Buffer.from(await file.arrayBuffer());
+    const teamRow = (await db.select({ name: schema.teams.name }).from(schema.teams).where(eq(schema.teams.id, Number(teamId))).limit(1))[0];
+    const month = Number(String(spentDate).slice(5, 7)) || null;
+    const up = await uploadDocumentToDrive({
+      teamName: teamRow?.name ?? null,
+      docType: "경비영수증",
+      month,
+      fileName: file.name || `receipt_${Date.now()}`,
+      bytes: buf,
+    });
+    if (up.ok && up.fileId) {
+      receiptFilePath = `drive:${up.fileId}`;
+      receiptMimeType = file.type || null;
+    } else {
+      return NextResponse.json({ error: `영수증 업로드 실패: ${up.message}` }, { status: 500 });
+    }
+  }
+
   const [row] = await db.insert(schema.expenses).values({
     teamId: Number(teamId),
     sessionNo: resolvedSessionNo,
-    spentDate,
-    category,
+    spentDate: String(spentDate),
+    category: category as typeof schema.expenses.$inferInsert["category"],
     supplyAmount: supply,
     vatAmount: vat,
     totalAmount: total,
-    vendorType: vendorType || null,
+    vendorType: (vendorType as "개인사업자" | "법인사업자" | undefined) || null,
     vendorBizNo: vendorBizNo || null,
     vendorName: vendorName || null,
     vendorCeo: vendorCeo || null,
     memo: memo || null,
     docType: (docType === "거래명세표" || docType === "세금계산서") ? docType : "영수증",
+    receiptFilePath,
+    receiptMimeType,
   }).returning({ id: schema.expenses.id });
 
   return NextResponse.json({ ok: true, id: row.id });
