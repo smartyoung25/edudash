@@ -72,11 +72,27 @@ export async function pollMailbox(opts?: {
   let unclassified = 0;
   let expensesCreated = 0;
 
+  // 허용 발신자(코디·교수·앱 사용자 이메일)만 수집 — 사업 무관 메일 과수집 방지.
+  // opts.fromEmail 이 지정되면 그 발신자만 보므로 허용목록은 사용하지 않음.
+  const allowlist = new Set<string>();
+  if (!opts?.fromEmail) {
+    const [emailTeams, emailUsers] = await Promise.all([
+      db.select({ c: schema.teams.coordinatorEmail, p: schema.teams.professorEmail }).from(schema.teams),
+      db.select({ email: schema.users.email }).from(schema.users),
+    ]);
+    for (const t of emailTeams) {
+      if (t.c) allowlist.add(t.c.toLowerCase());
+      if (t.p) allowlist.add(t.p.toLowerCase());
+    }
+    for (const u of emailUsers) if (u.email) allowlist.add(u.email.toLowerCase());
+  }
+
   // 쿼리 조립: 기본은 is:unread has:attachment (cron 호환).
   // opts 들어오면 includeRead 가 true 면 is:unread 제거, fromEmail/sinceDays 필터 추가.
   const queryParts: string[] = ["has:attachment"];
   if (!opts?.includeRead) queryParts.unshift("is:unread");
   if (opts?.fromEmail) queryParts.push(`from:${opts.fromEmail}`);
+  else if (allowlist.size) queryParts.push(`from:(${[...allowlist].join(" OR ")})`);
   if (opts?.sinceDays) queryParts.push(`newer_than:${opts.sinceDays}d`);
   const q = queryParts.join(" ");
   const skipMarkRead = !!opts?.includeRead;
@@ -106,6 +122,11 @@ export async function pollMailbox(opts?: {
       const subject = decodeHeader(headerMap.get("subject"));
       const fromHeader = decodeHeader(headerMap.get("from"));
       const fromAddress = extractAddress(fromHeader);
+
+      // 허용 발신자 외 메일은 수집하지 않음 (무관 메일 차단, 읽음 처리도 안 함)
+      if (!opts?.fromEmail && allowlist.size && !allowlist.has(fromAddress)) {
+        continue;
+      }
       const internalDate = full.data.internalDate
         ? new Date(Number(full.data.internalDate))
         : new Date();
