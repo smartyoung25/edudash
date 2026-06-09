@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { PRODUCT_COLORS, type Product } from "@/lib/teams";
 import { cn, formatDate } from "@/lib/utils";
 import { ReceiptViewer } from "../receipt-viewer";
+import { TeamReimburseButton } from "../reimburse-button";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
 
@@ -150,6 +151,9 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
                       docType: e.docType,
                     }}
                   />
+                  <div>
+                    <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} verb={(e.category === "강사비" || e.category === "퍼실리테이터비용") ? "지급" : "정산"} />
+                  </div>
                 </div>
               </Card>
             ))}

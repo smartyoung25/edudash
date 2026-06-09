@@ -12,12 +12,12 @@ export function TeamReimburseButton({
   id,
   status,
   note,
-  label,
+  verb = "정산",
 }: {
   id: number;
   status: string | null;
   note: string | null;
-  label?: string;
+  verb?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -54,11 +54,11 @@ export function TeamReimburseButton({
       <button
         onClick={revert}
         disabled={isPending}
-        title={note ?? "정산완료 — 클릭해서 되돌리기"}
+        title={note ?? `${verb}완료 — 클릭해서 되돌리기`}
         className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
       >
         <Check className="h-3 w-3" />
-        지급완료
+        {verb}완료
       </button>
     );
   }
@@ -70,11 +70,11 @@ export function TeamReimburseButton({
         disabled={isPending}
         className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border border-orange-300 bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
       >
-        + {label ?? "지급처리"}
+        + {verb}처리
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{label ?? "지급"} 처리</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{verb} 처리</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
               <Label className="text-xs">처리 메모 (선택)</Label>

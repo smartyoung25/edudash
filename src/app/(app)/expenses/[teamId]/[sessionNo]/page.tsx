@@ -15,6 +15,7 @@ import { TeamReimburseButton } from "../reimburse-button";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
 import { countsTowardTotal } from "@/lib/expense";
+import { getReceiptStatusMap } from "@/lib/receipt-status";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,8 @@ export default async function SessionExpensesPage({
       )
     )
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
+
+  const receiptStatus = await getReceiptStatusMap(expenses);
 
   const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
   const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
@@ -159,36 +162,33 @@ export default async function SessionExpensesPage({
                           {excluded && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">{e.docType} · 합산제외</span>
                           )}
-                          {(e.category === "강사비" || e.category === "퍼실리테이터비용") && (
-                            <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} label="지급처리" />
-                          )}
+                          <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} verb={(e.category === "강사비" || e.category === "퍼실리테이터비용") ? "지급" : "정산"} />
                         </div>
                       </td>
                       <td className="px-3 py-2">
                         <div className="font-medium">{e.vendorName || "-"}</div>
                         {e.vendorCeo && <div className="text-xs text-muted-foreground">{e.vendorCeo} · {e.vendorType || "-"}</div>}
                         {e.memo && <div className="text-xs text-muted-foreground italic">{e.memo}</div>}
-                        {e.receiptFilePath && (
-                          <div className="mt-1">
-                            <ReceiptViewer
-                              expenseId={e.id}
-                              mimeType={e.receiptMimeType}
-                              initial={{
-                                spentDate: e.spentDate,
-                                category: e.category,
-                                vendorName: e.vendorName,
-                                vendorCeo: e.vendorCeo,
-                                vendorBizNo: e.vendorBizNo,
-                                vendorType: e.vendorType,
-                                supplyAmount: e.supplyAmount,
-                                vatAmount: e.vatAmount,
-                                totalAmount: e.totalAmount,
-                                memo: e.memo,
-                                docType: e.docType,
-                              }}
-                            />
-                          </div>
-                        )}
+                        <div className="mt-1">
+                          <ReceiptViewer
+                            expenseId={e.id}
+                            mimeType={e.receiptMimeType}
+                            status={receiptStatus.get(e.id) ?? "none"}
+                            initial={{
+                              spentDate: e.spentDate,
+                              category: e.category,
+                              vendorName: e.vendorName,
+                              vendorCeo: e.vendorCeo,
+                              vendorBizNo: e.vendorBizNo,
+                              vendorType: e.vendorType,
+                              supplyAmount: e.supplyAmount,
+                              vatAmount: e.vatAmount,
+                              totalAmount: e.totalAmount,
+                              memo: e.memo,
+                              docType: e.docType,
+                            }}
+                          />
+                        </div>
                       </td>
                       <td className="px-3 py-2 tabular-nums text-xs">{e.vendorBizNo || "-"}</td>
                       <td className="px-3 py-2 tabular-nums text-right">{fmt(e.supplyAmount)}</td>
