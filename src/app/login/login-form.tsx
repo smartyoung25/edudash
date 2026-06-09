@@ -35,18 +35,17 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="email">이메일</Label>
+        <Label htmlFor="email">이메일 또는 아이디</Label>
         <Input
           id="email"
           name="username"
-          type="email"
+          type="text"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
           autoFocus
           autoComplete="username"
-          inputMode="email"
-          placeholder="name@iiam.co.kr"
+          placeholder="name@iiam.co.kr 또는 admin"
         />
       </div>
       <div className="space-y-2">
