@@ -57,6 +57,15 @@ function* walkParts(part: GmailPart | undefined): Generator<GmailPart> {
   }
 }
 
+// 딸기 11기(장성) 관련 메일인지 판별 — 분류된 팀명/제목/본문/파일명 종합
+function isJangseongStrawberry(...texts: (string | null | undefined)[]): boolean {
+  const hay = texts.filter(Boolean).join(" ");
+  if (/장성/.test(hay)) return true;                       // 지역명(이 팀 고유)
+  if (/딸기\s*11(?!\d)/.test(hay)) return true;            // "딸기11", "딸기 11"
+  if (/딸기/.test(hay) && /(?<!\d)11\s*기/.test(hay)) return true; // "딸기 … 11기"
+  return false;
+}
+
 export async function pollMailbox(opts?: {
   fromEmail?: string;
   sinceDays?: number;
@@ -171,6 +180,18 @@ export async function pollMailbox(opts?: {
         fileName: firstAttachmentName,
       });
       const teamName = teamNameLookup(teamId, teams);
+
+      // stepup2(메일함 본인) 발신 메일 특수 규칙:
+      //  - 외부로 나간(보낸) 메일은 일체 수집 안 함
+      //  - stepup2 → stepup2 자기 업로드는 "딸기 11기(장성)" 관련만 수집
+      const selfEmail = userId.toLowerCase();
+      if (fromAddress === selfEmail) {
+        const recipients = `${decodeHeader(headerMap.get("to"))} ${decodeHeader(headerMap.get("cc"))}`.toLowerCase();
+        const toSelf = recipients.includes(selfEmail);
+        if (!toSelf) continue; // 외부 발송(나간) 메일 → 제외
+        if (!isJangseongStrawberry(teamName, subject, bodyText, firstAttachmentName)) continue; // 딸기11기(장성)만 허용
+      }
+
       // 영수증 회차 자동배정용 — 제목/본문에서 N차시 추출
       const receiptSession = detectReceiptSessionNo(subject) ?? detectReceiptSessionNo(bodyText);
       let attachmentSaved = 0;
