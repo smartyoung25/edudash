@@ -103,12 +103,20 @@ export default async function DocumentsPage() {
                 </div>
               </div>
             </div>
-            <Badge variant={mailStatus?.status === "ok" ? "success" : mailStatus?.status === "error" ? "destructive" : "muted"}>
-              {mailStatus?.status === "ok" ? "정상" :
-               mailStatus?.status === "error" ? "오류" :
-               mailStatus?.status === "running" ? "실행중" : "비활성"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant={mailStatus?.status === "ok" ? "success" : mailStatus?.status === "error" ? "destructive" : "muted"}>
+                {mailStatus?.status === "ok" ? "정상" :
+                 mailStatus?.status === "error" ? "오류" :
+                 mailStatus?.status === "running" ? "실행중" : "비활성"}
+              </Badge>
+              {role === "admin" && (
+                <Link href="/documents/mail-log">
+                  <Badge variant="outline" className="cursor-pointer hover:bg-accent">수집 로그 보기</Badge>
+                </Link>
+              )}
+            </div>
           </div>
+          <div className="text-xs text-muted-foreground mt-2 ml-8">자동 수집: 매일 09·16·21시(KST) · 최근 14일 메일을 읽음 여부와 무관하게 수집(중복 자동 제외)</div>
         </Card>
 
         <Card className="p-6">
