@@ -395,6 +395,50 @@ export const formAttachments = sqliteTable("form_attachments", {
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// ───────── 설문조사 ─────────
+
+export const surveys = sqliteTable("surveys", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  status: text("status", { enum: ["draft", "open", "closed"] }).notNull().default("draft"),
+  publicToken: text("public_token").notNull().unique(),
+  collectTeam: integer("collect_team").notNull().default(1), // 1=작목·팀 수집
+  createdBy: integer("created_by"),
+  createdByName: text("created_by_name").notNull().default(""),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const surveyQuestions = sqliteTable("survey_questions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  surveyId: integer("survey_id").notNull().references(() => surveys.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  section: text("section"), // 예: "강사", "운영" (nullable)
+  qType: text("q_type", { enum: ["scale5", "short", "long", "choice"] }).notNull(),
+  label: text("label").notNull(),
+  required: integer("required").notNull().default(0), // 1=필수
+  options: text("options"), // choice 전용, JSON 배열 문자열
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const surveyResponses = sqliteTable("survey_responses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  surveyId: integer("survey_id").notNull().references(() => surveys.id, { onDelete: "cascade" }),
+  product: text("product"), // 작목 (nullable)
+  teamName: text("team_name"), // 팀 (nullable)
+  submittedAt: text("submitted_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  userAgent: text("user_agent"),
+});
+
+export const surveyAnswers = sqliteTable("survey_answers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  responseId: integer("response_id").notNull().references(() => surveyResponses.id, { onDelete: "cascade" }),
+  questionId: integer("question_id").notNull().references(() => surveyQuestions.id, { onDelete: "cascade" }),
+  valueInt: integer("value_int"), // 척도/선택 점수
+  valueText: text("value_text"), // 단답·장문·선택값
+});
+
 export type User = typeof users.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Member = typeof members.$inferSelect;
@@ -405,3 +449,7 @@ export type Contact = typeof contacts.$inferSelect;
 export type KpiDef = typeof kpiDefinitions.$inferSelect;
 export type KpiProgress = typeof kpiProgress.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type Survey = typeof surveys.$inferSelect;
+export type SurveyQuestion = typeof surveyQuestions.$inferSelect;
+export type SurveyResponse = typeof surveyResponses.$inferSelect;
+export type SurveyAnswer = typeof surveyAnswers.$inferSelect;
