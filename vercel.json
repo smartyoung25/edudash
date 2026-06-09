@@ -3,7 +3,6 @@
   "regions": ["icn1"],
   "crons": [
     { "path": "/api/integrations/mail/sync?includeRead=1&sinceDays=14", "schedule": "0 0 * * *" },
-    { "path": "/api/integrations/mail/sync?includeRead=1&sinceDays=14", "schedule": "0 12 * * *" },
     { "path": "/api/reports/weekly/auto", "schedule": "0 11 * * 4" }
   ],
   "functions": {
