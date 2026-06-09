@@ -54,6 +54,18 @@ export async function classifyByEmail(fromAddress: string): Promise<number | nul
   const users = await db.select().from(schema.users);
   const coord = users.find((u) => u.email === fromAddress || u.email === fromAddress.split("@")[0]);
   if (coord && coord.teamId) return coord.teamId;
+
+  // 2순위: 팀의 코디/주임교수 이메일과 일치하면 그 팀.
+  // 단, 한 이메일이 여러 팀을 담당(겸임)하면 발신자만으론 못 정하므로 텍스트 별칭으로 넘긴다.
+  const addr = fromAddress.toLowerCase();
+  const teamRows = await db
+    .select({ id: schema.teams.id, c: schema.teams.coordinatorEmail, p: schema.teams.professorEmail })
+    .from(schema.teams);
+  const matchedTeams = teamRows.filter(
+    (t) => (t.c && t.c.toLowerCase() === addr) || (t.p && t.p.toLowerCase() === addr),
+  );
+  if (matchedTeams.length === 1) return matchedTeams[0].id;
+
   return null;
 }
 
