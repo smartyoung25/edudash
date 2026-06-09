@@ -10,6 +10,7 @@ import { PRODUCT_COLORS, type Product } from "@/lib/teams";
 import { cn, formatDate } from "@/lib/utils";
 import { ReceiptViewer } from "../receipt-viewer";
 import { TeamReimburseButton } from "../reimburse-button";
+import { getReceiptStatusMap } from "@/lib/receipt-status";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
 
@@ -44,6 +45,8 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
   const expenses = await db.select().from(schema.expenses)
     .where(and(eq(schema.expenses.teamId, teamId), isNotNull(schema.expenses.receiptFilePath)))
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
+
+  const receiptStatus = await getReceiptStatusMap(expenses);
 
   return (
     <div>
@@ -137,6 +140,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
                     expenseId={e.id}
                     mimeType={e.receiptMimeType}
                     triggerLabel="크게 보기"
+                    status={receiptStatus.get(e.id) ?? "none"}
                     initial={{
                       spentDate: e.spentDate,
                       category: e.category,

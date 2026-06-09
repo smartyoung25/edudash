@@ -10,6 +10,6 @@
     "src/app/api/reports/weekly/auto/route.ts": { "maxDuration": 60 },
     "src/app/api/integrations/mail/sync/route.ts": { "maxDuration": 60 },
     "src/app/api/integrations/sheets/sync/route.ts": { "maxDuration": 60 },
-    "src/app/api/documents/finalize/route.ts": { "maxDuration": 30 }
+    "src/app/api/documents/upload/route.ts": { "maxDuration": 30 }
   }
 }

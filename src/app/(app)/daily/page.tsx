@@ -68,6 +68,10 @@ export default async function DailyPage() {
     }))
     .filter((r) => r.team);
 
+  // 카드에 표시할 팀·회차 요약 (모든 팀 나열, 중복 제거)
+  const todayTeamsLabel = [...new Set(rows.map((r) => `${r.team!.name} ${r.session.sessionNo}회차`))].join(", ") || undefined;
+  const weekTeamsLabel = [...new Set(weekRows.map((r) => `${r.team!.name} ${r.session.sessionNo}회차`))].join(", ") || undefined;
+
   const weekScheduledTeamCount = new Set(weekRows.map((r) => r.team!.id)).size;
   const weekEnteredCount = weekRows.filter((r) => r.report).length;
   const weekMissingCount = weekRows.length - weekEnteredCount;
@@ -88,7 +92,7 @@ export default async function DailyPage() {
       />
       <div className="p-6 space-y-6">
         <div className="grid gap-4 md:grid-cols-4">
-          <StatCard label="오늘 예정 팀" value={scheduledTeamCount} icon={CalendarDays} accent="emerald" />
+          <StatCard label="오늘 예정 팀" value={scheduledTeamCount} hint={todayTeamsLabel} icon={CalendarDays} accent="emerald" />
           <StatCard label="입력 완료" value={enteredCount} icon={CheckCircle2} accent="blue" />
           <StatCard label="미입력" value={missingCount} icon={AlertCircle} accent="amber" />
           <StatCard label="출석/불참 합계" value={`${totalAttended} / ${totalAbsent}`} icon={Users} accent="rose" />
@@ -97,7 +101,7 @@ export default async function DailyPage() {
         <div className="space-y-2">
           <h2 className="text-lg font-semibold">주간현황 ({formatDate(weekStart)} ~ {formatDate(weekEnd)})</h2>
           <div className="grid gap-4 md:grid-cols-4">
-            <StatCard label="주간 예정 팀" value={weekScheduledTeamCount} icon={CalendarDays} accent="violet" />
+            <StatCard label="주간 예정 팀" value={weekScheduledTeamCount} hint={weekTeamsLabel} icon={CalendarDays} accent="violet" />
             <StatCard label="입력 완료" value={weekEnteredCount} icon={CheckCircle2} accent="blue" />
             <StatCard label="미입력" value={weekMissingCount} icon={AlertCircle} accent="amber" />
             <StatCard label="출석/불참 합계" value={`${weekTotalAttended} / ${weekTotalAbsent}`} icon={Users} accent="orange" />

@@ -11,6 +11,7 @@ import { DeleteAgencyButton } from "./delete-button";
 import { AgencyReceiptViewer } from "./receipt-viewer";
 import { ReimburseButton } from "./reimburse-button";
 import { requireRole } from "@/lib/auth";
+import { getReceiptStatusMap } from "@/lib/receipt-status";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,8 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
   const rows = await db.select().from(schema.agencyExpenses)
     .where(eq(schema.agencyExpenses.kind, kind as "출장비" | "기타경비"))
     .orderBy(desc(schema.agencyExpenses.spentDate), desc(schema.agencyExpenses.id));
+
+  const receiptStatus = await getReceiptStatusMap(rows);
 
   const isReceipt = (r: typeof rows[number]) => !r.docType || r.docType === "영수증";
   const receiptsOnly = rows.filter(isReceipt);
@@ -159,7 +162,7 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
                               expenseId={e.id}
                               mimeType={e.receiptMimeType}
                               docType={e.docType}
-                              hasReceipt={!!e.receiptFilePath}
+                              status={receiptStatus.get(e.id) ?? "none"}
                               initial={{
                                 supplyAmount: e.supplyAmount,
                                 vatAmount: e.vatAmount,

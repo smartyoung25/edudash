@@ -6,19 +6,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ImageIcon, FileText, Save, Loader2, Pencil, ImageOff } from "lucide-react";
+import { ImageIcon, FileText, Save, Loader2, ImageOff, AlertTriangle, Upload } from "lucide-react";
+
+export type ReceiptStatus = "ok" | "missing" | "none";
 
 export function AgencyReceiptViewer({
   expenseId,
   mimeType,
   docType,
-  hasReceipt = true,
+  status = "ok",
   initial,
 }: {
   expenseId: number;
   mimeType?: string | null;
   docType?: string | null;
-  hasReceipt?: boolean;
+  status?: ReceiptStatus;
   initial?: {
     supplyAmount: number;
     vatAmount: number;
@@ -30,6 +32,8 @@ export function AgencyReceiptViewer({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [form, setForm] = useState(() => ({
     supplyAmount: initial?.supplyAmount ?? 0,
     vatAmount: initial?.vatAmount ?? 0,
@@ -40,8 +44,37 @@ export function AgencyReceiptViewer({
   const [msg, setMsg] = useState<string | null>(null);
 
   const isPdf = mimeType === "application/pdf";
-  const label = hasReceipt ? (docType && docType !== "영수증" ? docType : "영수증") : "수정";
-  const Icon = hasReceipt ? ImageIcon : Pencil;
+  const hasReceipt = status === "ok";
+  const trigger =
+    status === "ok"
+      ? { Icon: ImageIcon, label: docType && docType !== "영수증" ? docType : "영수증", cls: "text-emerald-700 hover:text-emerald-900" }
+      : status === "missing"
+        ? { Icon: AlertTriangle, label: "영수증 누락", cls: "text-amber-700 hover:text-amber-900" }
+        : { Icon: Upload, label: "영수증 추가", cls: "text-slate-600 hover:text-slate-900" };
+  const label = trigger.label;
+  const Icon = trigger.Icon;
+
+  async function uploadReceipt(file: File) {
+    setUploadMsg(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("receipt", file);
+      const res = await fetch(`/api/agency-expenses/${expenseId}/receipt`, { method: "POST", body: fd });
+      if (res.ok) {
+        setUploadMsg("업로드됨");
+        router.refresh();
+        setTimeout(() => setOpen(false), 600);
+      } else {
+        const j = await res.json().catch(() => ({}));
+        setUploadMsg(j.error || "업로드 실패");
+      }
+    } catch {
+      setUploadMsg("업로드 실패");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function setNum(key: "supplyAmount" | "vatAmount" | "totalAmount", v: string) {
     const n = v === "" ? 0 : Math.max(0, Math.floor(Number(v) || 0));
@@ -75,7 +108,7 @@ export function AgencyReceiptViewer({
     <>
       <button
         onClick={() => setOpen(true)}
-        className={`inline-flex items-center gap-1 text-xs underline-offset-2 hover:underline ${hasReceipt ? "text-emerald-700 hover:text-emerald-900" : "text-slate-600 hover:text-slate-900"}`}
+        className={`inline-flex items-center gap-1 text-xs underline-offset-2 hover:underline ${trigger.cls}`}
       >
         <Icon className="h-3.5 w-3.5" />
         {label}
@@ -89,8 +122,8 @@ export function AgencyReceiptViewer({
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* 좌: 영수증 이미지 또는 플레이스홀더 */}
-            <div className="max-h-[70vh] min-h-[300px] overflow-auto bg-muted/20 rounded-md flex items-center justify-center">
+            {/* 좌: 영수증 이미지 또는 플레이스홀더 + 업로드 */}
+            <div className="max-h-[70vh] min-h-[300px] overflow-auto bg-muted/20 rounded-md flex flex-col items-center justify-center gap-3 p-3">
               {hasReceipt ? (
                 isPdf ? (
                   <iframe src={`/api/agency-expenses/${expenseId}/receipt`} className="w-full h-[70vh]" />
@@ -102,10 +135,24 @@ export function AgencyReceiptViewer({
                   />
                 )
               ) : (
-                <div className="flex flex-col items-center gap-2 text-muted-foreground text-sm py-12">
-                  <ImageOff className="h-10 w-10 opacity-50" />
-                  <div>영수증 미첨부</div>
-                  <div className="text-xs">우측 폼에서 금액·거래처를 직접 입력하세요</div>
+                <div className="flex flex-col items-center gap-3 text-sm py-8">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    {status === "missing" ? <AlertTriangle className="h-10 w-10 text-amber-500" /> : <ImageOff className="h-10 w-10 opacity-50" />}
+                    <div>{status === "missing" ? "영수증 누락 — 원본 파일을 찾을 수 없습니다" : "영수증 미첨부"}</div>
+                    <div className="text-xs">아래에서 업로드하거나 우측 폼에서 금액·거래처를 입력하세요</div>
+                  </div>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer rounded-md border bg-background px-3 py-1.5 text-xs hover:bg-muted/50">
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    영수증 업로드
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.bmp"
+                      className="hidden"
+                      disabled={uploading}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadReceipt(f); }}
+                    />
+                  </label>
+                  {uploadMsg && <span className={`text-xs ${uploadMsg === "업로드됨" ? "text-emerald-700" : "text-rose-600"}`}>{uploadMsg}</span>}
                 </div>
               )}
             </div>

@@ -11,25 +11,6 @@ import { X, Upload } from "lucide-react";
 
 type Att = { fileId: string; fileName: string; mimeType?: string; sizeBytes?: number };
 
-async function uploadOneToDrive(uploadUrl: string, f: File, onProg: (p: number) => void): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", uploadUrl, true);
-    xhr.setRequestHeader("Content-Type", f.type || "application/octet-stream");
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProg(Math.round((e.loaded / e.total) * 100)); };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const d = JSON.parse(xhr.responseText);
-          if (d.id) resolve(d.id as string); else reject(new Error("응답에 fileId 없음"));
-        } catch { reject(new Error("응답 파싱 실패")); }
-      } else reject(new Error(`Drive 업로드 실패: ${xhr.status}`));
-    };
-    xhr.onerror = () => reject(new Error("네트워크 오류"));
-    xhr.send(f);
-  });
-}
-
 export function FormComposer() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -37,7 +18,7 @@ export function FormComposer() {
   const [body, setBody] = useState("");
   const [pending, setPending] = useState<File[]>([]);
   const [uploaded, setUploaded] = useState<Att[]>([]);
-  const [uploading, setUploading] = useState<{ name: string; pct: number } | null>(null);
+  const [uploading, setUploading] = useState<{ name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSave] = useTransition();
 
@@ -49,17 +30,15 @@ export function FormComposer() {
   async function doUpload() {
     setError(null);
     for (const f of pending) {
-      setUploading({ name: f.name, pct: 0 });
+      setUploading({ name: f.name });
       try {
-        const r1 = await fetch("/api/forms/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category, fileName: f.name, fileSize: f.size, mimeType: f.type || undefined }),
-        });
-        const d1 = await r1.json();
-        if (!r1.ok) throw new Error(typeof d1.error === "string" ? d1.error : "업로드 URL 발급 실패");
-        const fileId = await uploadOneToDrive(d1.uploadUrl, f, (p) => setUploading({ name: f.name, pct: p }));
-        setUploaded((prev) => [...prev, { fileId, fileName: d1.fileName ?? f.name, mimeType: f.type || undefined, sizeBytes: f.size }]);
+        const fd = new FormData();
+        fd.append("category", category);
+        fd.append("file", f);
+        const res = await fetch("/api/forms/upload", { method: "POST", body: fd });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.fileId) throw new Error(typeof d.error === "string" ? d.error : "업로드 실패");
+        setUploaded((prev) => [...prev, { fileId: d.fileId, fileName: d.fileName ?? f.name, mimeType: d.mimeType ?? (f.type || undefined), sizeBytes: d.sizeBytes ?? f.size }]);
       } catch (e) {
         setError(e instanceof Error ? e.message : "업로드 실패");
         setUploading(null);
@@ -134,7 +113,7 @@ export function FormComposer() {
                 </div>
               ))}
               <Button type="button" size="sm" variant="secondary" onClick={doUpload} disabled={uploading !== null}>
-                <Upload className="h-4 w-4" /> {uploading ? `업로드 중... ${uploading.pct}%` : `${pending.length}개 업로드`}
+                <Upload className="h-4 w-4" /> {uploading ? "업로드 중..." : `${pending.length}개 업로드`}
               </Button>
             </div>
           )}
