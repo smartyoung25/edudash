@@ -15,7 +15,6 @@ import { TeamReimburseButton } from "../../reimburse-button";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
 import { countsTowardTotal } from "@/lib/expense";
-import { getReceiptStatusMap } from "@/lib/receipt-status";
 
 export const dynamic = "force-dynamic";
 
@@ -66,8 +65,6 @@ export default async function SessionCategoryPage({
       isNoneSession ? isNull(schema.expenses.sessionNo) : eq(schema.expenses.sessionNo, sessionNo as number),
     ))
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
-
-  const receiptStatus = await getReceiptStatusMap(expenses);
 
   const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
   const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
@@ -147,24 +144,25 @@ export default async function SessionCategoryPage({
                         {e.vendorCeo && <div className="text-xs text-muted-foreground">{e.vendorCeo} · {e.vendorType || "-"}</div>}
                         {e.memo && <div className="text-xs text-muted-foreground italic">{e.memo}</div>}
                         <div className="mt-1 flex items-center gap-1 flex-wrap">
-                          <ReceiptViewer
-                            expenseId={e.id}
-                            mimeType={e.receiptMimeType}
-                            status={receiptStatus.get(e.id) ?? "none"}
-                            initial={{
-                              spentDate: e.spentDate,
-                              category: e.category,
-                              vendorName: e.vendorName,
-                              vendorCeo: e.vendorCeo,
-                              vendorBizNo: e.vendorBizNo,
-                              vendorType: e.vendorType,
-                              supplyAmount: e.supplyAmount,
-                              vatAmount: e.vatAmount,
-                              totalAmount: e.totalAmount,
-                              memo: e.memo,
-                              docType: e.docType,
-                            }}
-                          />
+                          {e.receiptFilePath && (
+                            <ReceiptViewer
+                              expenseId={e.id}
+                              mimeType={e.receiptMimeType}
+                              initial={{
+                                spentDate: e.spentDate,
+                                category: e.category,
+                                vendorName: e.vendorName,
+                                vendorCeo: e.vendorCeo,
+                                vendorBizNo: e.vendorBizNo,
+                                vendorType: e.vendorType,
+                                supplyAmount: e.supplyAmount,
+                                vatAmount: e.vatAmount,
+                                totalAmount: e.totalAmount,
+                                memo: e.memo,
+                                docType: e.docType,
+                              }}
+                            />
+                          )}
                           <TeamReimburseButton id={e.id} status={e.reimburseStatus} note={e.reimburseNote} verb={(category === "강사비" || category === "퍼실리테이터비용") ? "지급" : "정산"} />
                         </div>
                       </td>
