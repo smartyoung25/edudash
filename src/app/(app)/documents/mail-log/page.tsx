@@ -61,7 +61,7 @@ export default async function MailLogPage() {
               <Badge variant="warning">미분류 {unclassified}</Badge>
             </div>
           </div>
-          <div className="text-xs text-muted-foreground mt-2">자동 수집: 매일 09·16·21시(KST) · 최근 14일 메일을 읽음 여부와 무관하게 수집(중복 자동 제외)</div>
+          <div className="text-xs text-muted-foreground mt-2">자동 수집: 매일 09·21시(KST) · 최근 14일 메일을 읽음 여부와 무관하게 수집(중복 자동 제외)</div>
         </Card>
 
         <Card className="p-0 overflow-hidden">
