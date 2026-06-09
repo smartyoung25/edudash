@@ -17,6 +17,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
+import { EXTRA_COORDINATOR_EMAILS } from "./coordinator-overrides";
 
 const RECEIPTS_DIR = "data/receipts";
 
@@ -387,6 +388,7 @@ export async function importReceiptsFromMail(opts?: {
   for (const t of teams) {
     if (t.coordinatorEmail) coordEmails.add(t.coordinatorEmail.toLowerCase());
   }
+  for (const e of EXTRA_COORDINATOR_EMAILS) coordEmails.add(e); // 코드 보강 코디 이메일
   const targetFrom = opts?.fromEmail?.toLowerCase();
 
   const client = new ImapFlow({

@@ -1,5 +1,6 @@
 import { db, schema } from "@/db/client";
 import { eq } from "drizzle-orm";
+import { EXTRA_EMAIL_TO_MATCH } from "./coordinator-overrides";
 
 // 더 길고 구체적인 키워드부터 매칭 — "교육생일지"가 "일지"로 잘못 잡히지 않도록
 const DOC_KEYWORDS: Record<string, string[]> = {
@@ -38,6 +39,18 @@ export async function classifyTeamByText(...haystacks: string[]): Promise<number
 
 // 보내는 사람 이메일이 코디 user 라면 그 사람의 teamId
 export async function classifyByEmail(fromAddress: string): Promise<number | null> {
+  // 1순위: 코드 보강 매핑(이메일 → 작목/이름) — 운영 DB에 coordinatorEmail이 없어도 분류되게.
+  // 매칭 결과가 팀 1개로 유일할 때만 사용(애매하면 아래 기존 로직으로 진행).
+  const match = EXTRA_EMAIL_TO_MATCH[fromAddress.toLowerCase()];
+  if (match) {
+    const rows = await db.select({ id: schema.teams.id, name: schema.teams.name, product: schema.teams.product }).from(schema.teams);
+    const cand = rows.filter(
+      (t) =>
+        (!match.product || t.product === match.product) &&
+        (!match.nameIncludes || t.name.includes(match.nameIncludes)),
+    );
+    if (cand.length === 1) return cand[0].id;
+  }
   const users = await db.select().from(schema.users);
   const coord = users.find((u) => u.email === fromAddress || u.email === fromAddress.split("@")[0]);
   if (coord && coord.teamId) return coord.teamId;

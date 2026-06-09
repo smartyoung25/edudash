@@ -5,6 +5,7 @@ import { getGmailClient } from "./google-auth";
 import { uploadDocumentToDrive } from "./drive";
 import { classifyTeam, classifyDocType, detectMonth, detectSessionNo, resetClassifierCache } from "./classifier";
 import { processReceiptCandidate, detectSessionNo as detectReceiptSessionNo } from "./imap-receipts";
+import { EXTRA_COORDINATOR_EMAILS } from "./coordinator-overrides";
 
 export interface MailSyncResult {
   ok: boolean;
@@ -87,6 +88,7 @@ export async function pollMailbox(opts?: {
       if (t.p) allowlist.add(t.p.toLowerCase());
     }
     for (const u of emailUsers) if (u.email) allowlist.add(u.email.toLowerCase());
+    for (const e of EXTRA_COORDINATOR_EMAILS) allowlist.add(e); // 코드 보강 코디 이메일
   }
 
   // 쿼리 조립: 기본은 is:unread has:attachment (cron 호환).
