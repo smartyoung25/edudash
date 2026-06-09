@@ -6,6 +6,7 @@ import { uploadDocumentToDrive } from "./drive";
 import { classifyTeam, classifyDocType, detectMonth, detectSessionNo, resetClassifierCache } from "./classifier";
 import { processReceiptCandidate, detectSessionNo as detectReceiptSessionNo } from "./imap-receipts";
 import { EXTRA_COORDINATOR_EMAILS } from "./coordinator-overrides";
+import { isJangseongStrawberry } from "./self-mail-rule";
 
 export interface MailSyncResult {
   ok: boolean;
@@ -55,15 +56,6 @@ function* walkParts(part: GmailPart | undefined): Generator<GmailPart> {
   if (part.parts) {
     for (const p of part.parts) yield* walkParts(p);
   }
-}
-
-// 딸기 11기(장성) 관련 메일인지 판별 — 분류된 팀명/제목/본문/파일명 종합
-function isJangseongStrawberry(...texts: (string | null | undefined)[]): boolean {
-  const hay = texts.filter(Boolean).join(" ");
-  if (/장성/.test(hay)) return true;                       // 지역명(이 팀 고유)
-  if (/딸기\s*11(?!\d)/.test(hay)) return true;            // "딸기11", "딸기 11"
-  if (/딸기/.test(hay) && /(?<!\d)11\s*기/.test(hay)) return true; // "딸기 … 11기"
-  return false;
 }
 
 export async function pollMailbox(opts?: {

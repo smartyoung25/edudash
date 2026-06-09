@@ -11,6 +11,7 @@ import { UploadButton } from "./upload-button";
 import { MailSyncButton } from "./mail-sync-button";
 import { BackfillButton } from "./backfill-button";
 import { ResolveDialog } from "./resolve-dialog";
+import { CleanupSelfButton } from "./cleanup-self-button";
 import { getCurrentUser } from "@/lib/auth";
 import type { Role } from "@/lib/permissions";
 import { canResolveUnclassified, canUploadDocument } from "@/lib/permissions";
@@ -87,7 +88,12 @@ export default async function DocumentsPage() {
                 <div className="text-sm font-medium text-amber-900">미분류 서류 {unclassified.length}건</div>
                 <div className="text-xs text-amber-700">발신자/제목 자동 매칭에 실패한 서류입니다. 수동 분류가 필요합니다.</div>
               </div>
-              {canResolveUnclassified(role) && <ResolveDialog teams={teams} unclassified={unclassified} />}
+              {canResolveUnclassified(role) && (
+                <div className="flex items-center gap-2">
+                  {role === "admin" && <CleanupSelfButton />}
+                  <ResolveDialog teams={teams} unclassified={unclassified} />
+                </div>
+              )}
             </div>
           </Card>
         )}
