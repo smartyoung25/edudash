@@ -42,6 +42,18 @@ function parseDate(val: ExcelJS.CellValue): string | null {
   // ISO 문자열인 경우
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
 
+  // "YYYY.MM.DD" / "YYYY/MM/DD" (점·슬래시 구분 전체 날짜)
+  const ymd = s.match(/^(\d{4})[./](\d{1,2})[./](\d{1,2})$/);
+  if (ymd) {
+    return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
+  }
+
+  // "YY.MM.DD" / "YY/MM/DD" (2자리 연도 — 2000년대)
+  const yymd = s.match(/^(\d{2})[./](\d{1,2})[./](\d{1,2})$/);
+  if (yymd) {
+    return `20${yymd[1]}-${yymd[2].padStart(2, "0")}-${yymd[3].padStart(2, "0")}`;
+  }
+
   // GMT 문자열인 경우 (ExcelJS string 셀)
   if (s.includes("GMT")) {
     const d = new Date(s);
@@ -113,7 +125,13 @@ export async function matchOrCreateTeam(
     if (norm(a.alias) === sn) return a.teamId;
   }
 
-  // 4. 매칭 실패 — 자동 생성 금지
+  // 4. 단일팀 작목 폴백 — 시트명에서 작목을 추론하고, 그 작목 팀이 DB에 1개뿐이면 매칭.
+  //    탭명 오타(예: "토마토1기"→토마토 유일팀)도 복구. 다중팀 작목은 모호하므로 폴백 안 함.
+  const product = inferProduct(sheetName);
+  const sameProduct = teams.filter((t) => t.product === product);
+  if (sameProduct.length === 1) return sameProduct[0].id;
+
+  // 5. 매칭 실패 — 자동 생성 금지
   return null;
 }
 
@@ -199,6 +217,7 @@ export async function syncPublicSheet(spreadsheetId: string): Promise<SheetSyncR
     .from(schema.teams);
 
   const teamResults: SheetSyncResult["teams"] = [];
+  const unmatchedTabs: string[] = [];
   let totalUpserted = 0;
 
   for (const ws of wb.worksheets) {
@@ -206,6 +225,7 @@ export async function syncPublicSheet(spreadsheetId: string): Promise<SheetSyncR
     const teamId = await matchOrCreateTeam(sheetName, dbTeams);
     if (teamId == null) {
       console.warn(`[시트] 매칭 실패 — 무시: "${sheetName}" (DB 팀 또는 alias 등록 필요)`);
+      unmatchedTabs.push(sheetName);
       teamResults.push({ name: sheetName, sessions: 0, skipped: 0 });
       continue;
     }
@@ -264,9 +284,16 @@ export async function syncPublicSheet(spreadsheetId: string): Promise<SheetSyncR
     totalUpserted += upserted;
   }
 
+  const matchedCount = wb.worksheets.length - unmatchedTabs.length;
+  const message =
+    `${matchedCount}/${wb.worksheets.length}개 시트 매칭, 총 ${totalUpserted}건 반영` +
+    (unmatchedTabs.length
+      ? ` · ⚠ 미매칭 탭 ${unmatchedTabs.length}개(무시됨): ${unmatchedTabs.join(", ")} — 탭명을 팀명과 일치시키거나 별칭을 등록하세요`
+      : "");
+
   return {
     ok: true,
-    message: `${wb.worksheets.length}개 팀 시트 처리, 총 ${totalUpserted}건 반영`,
+    message,
     teams: teamResults,
     totalUpserted,
   };
