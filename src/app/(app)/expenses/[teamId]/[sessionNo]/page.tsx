@@ -172,6 +172,8 @@ export default async function SessionExpensesPage({
                         <div className="mt-1">
                           <ReceiptViewer
                             expenseId={e.id}
+                            totalSessions={teamRow.totalSessions}
+                            sessionNo={e.sessionNo}
                             mimeType={e.receiptMimeType}
                             status={receiptStatus.get(e.id) ?? "none"}
                             initial={{

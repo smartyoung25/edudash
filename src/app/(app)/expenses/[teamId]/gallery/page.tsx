@@ -138,6 +138,8 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
                   <div className="text-sm font-bold tabular-nums">{fmt(e.totalAmount)}원</div>
                   <ReceiptViewer
                     expenseId={e.id}
+                    totalSessions={teamRow.totalSessions}
+                    sessionNo={e.sessionNo}
                     mimeType={e.receiptMimeType}
                     triggerLabel="크게 보기"
                     status={receiptStatus.get(e.id) ?? "none"}

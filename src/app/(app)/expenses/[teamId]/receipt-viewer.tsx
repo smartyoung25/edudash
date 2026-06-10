@@ -37,6 +37,8 @@ export function ReceiptViewer({
   initial,
   editable = true,
   status = "ok",
+  totalSessions = 0,
+  sessionNo = null,
 }: {
   expenseId: number;
   mimeType?: string | null;
@@ -44,6 +46,8 @@ export function ReceiptViewer({
   initial?: ReceiptViewerInitial;
   editable?: boolean;
   status?: ReceiptStatus;
+  totalSessions?: number;
+  sessionNo?: number | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -78,6 +82,7 @@ export function ReceiptViewer({
 
   const [form, setForm] = useState(() => ({
     spentDate: initial?.spentDate ?? "",
+    sessionNo: sessionNo == null ? "none" : String(sessionNo),
     category: initial?.category ?? "",
     vendorName: initial?.vendorName ?? "",
     vendorCeo: initial?.vendorCeo ?? "",
@@ -115,7 +120,11 @@ export function ReceiptViewer({
       const res = await fetch("/api/expenses", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: expenseId, ...form }),
+        body: JSON.stringify({
+          id: expenseId,
+          ...form,
+          sessionNo: form.sessionNo === "none" ? null : Number(form.sessionNo),
+        }),
       });
       if (res.ok) {
         setMsg("저장됨");
@@ -216,6 +225,19 @@ export function ReceiptViewer({
                       </button>
                     )}
                   </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs">회차 (이동)</Label>
+                  <Select value={form.sessionNo} onValueChange={(v) => setForm((f) => ({ ...f, sessionNo: v }))}>
+                    <SelectTrigger><SelectValue placeholder="회차 선택" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">미지정</SelectItem>
+                      {Array.from({ length: totalSessions }, (_, i) => i + 1).map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}회차</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>

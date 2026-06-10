@@ -115,6 +115,12 @@ export async function PATCH(req: Request) {
   const allowed: Partial<typeof schema.expenses.$inferInsert> = {};
   if (body.spentDate !== undefined) allowed.spentDate = String(body.spentDate);
   if (body.category !== undefined) allowed.category = body.category;
+  // 회차 이동 — 숫자 또는 null(미지정). session_id 는 회차 기준 정합성이 깨지지 않게 함께 비움.
+  if (body.sessionNo !== undefined) {
+    const n = body.sessionNo === null || body.sessionNo === "" ? null : Number(body.sessionNo);
+    allowed.sessionNo = n != null && Number.isFinite(n) ? n : null;
+    allowed.sessionId = null;
+  }
   if (body.vendorName !== undefined) allowed.vendorName = body.vendorName || null;
   if (body.vendorCeo !== undefined) allowed.vendorCeo = body.vendorCeo || null;
   if (body.vendorBizNo !== undefined) allowed.vendorBizNo = body.vendorBizNo || null;

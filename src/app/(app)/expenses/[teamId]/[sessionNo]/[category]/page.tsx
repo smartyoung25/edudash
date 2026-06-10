@@ -149,6 +149,8 @@ export default async function SessionCategoryPage({
                         <div className="mt-1 flex items-center gap-1 flex-wrap">
                           <ReceiptViewer
                             expenseId={e.id}
+                            totalSessions={teamRow.totalSessions}
+                            sessionNo={e.sessionNo}
                             mimeType={e.receiptMimeType}
                             status={receiptStatus.get(e.id) ?? "none"}
                             initial={{
