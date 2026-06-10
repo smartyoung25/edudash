@@ -65,8 +65,8 @@ function parseDate(val: ExcelJS.CellValue): string | null {
     }
   }
 
-  // "N월 M일" 패턴
-  const m = s.match(/(\d{1,2})월\s*(\d{1,2})일/);
+  // "N월 M일" 패턴 ("일"은 선택 — "3월 27"처럼 일자 누락도 허용)
+  const m = s.match(/(\d{1,2})월\s*(\d{1,2})\s*일?/);
   if (m) {
     const month = m[1].padStart(2, "0");
     const day = m[2].padStart(2, "0");
