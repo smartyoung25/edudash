@@ -8,7 +8,8 @@
 export type TeamMatch = { product?: string; nameIncludes?: string };
 
 export const EXTRA_TEAM_COORDINATORS: { match: TeamMatch; emails: string[] }[] = [
-  { match: { product: "토마토" }, emails: ["moonsw0617@nate.com"] }, // 문성욱 (토마토 7기 = 토마토 팀 유일)
+  // 토마토 7기(BEST방토) — 코디 문유빈(ansdbqls544), 강사 문성욱(moonsw0617). 토마토 팀은 유일.
+  { match: { product: "토마토" }, emails: ["ansdbqls544@naver.com", "moonsw0617@nate.com"] },
 ];
 
 // 평탄화: 추가 코디 이메일 전체 (소문자) — 수집 allowlist 보강용

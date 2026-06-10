@@ -4,7 +4,13 @@ import { env, isMailEnabled } from "../env";
 import { getGmailClient } from "./google-auth";
 import { uploadDocumentToDrive } from "./drive";
 import { classifyTeam, classifyDocType, detectMonth, detectSessionNo, resetClassifierCache } from "./classifier";
-import { processReceiptCandidate, detectSessionNo as detectReceiptSessionNo } from "./imap-receipts";
+import {
+  processReceiptCandidate,
+  detectSessionNo as detectReceiptSessionNo,
+  extractEmbeddedImages,
+  extractHwpImages,
+  expandPdfCandidates,
+} from "./imap-receipts";
 import { EXTRA_COORDINATOR_EMAILS } from "./coordinator-overrides";
 import { isJangseongStrawberry } from "./self-mail-rule";
 
@@ -19,8 +25,32 @@ export interface MailSyncResult {
 }
 
 const ALLOWED_EXT = [".pdf", ".hwp", ".docx", ".xlsx", ".jpg", ".jpeg", ".png"];
+// 영수증 추출용으로 추가로 내려받을 압축/한글 컨테이너 (문서 행은 만들지 않고 내부 영수증만 추출)
+const ARCHIVE_EXT = [".zip", ".hwpx"];
+// 영수증/수당/품의서류로 보이는 첨부만 정산 반영 대상으로 (출석부·일지 등 제외)
+const RECEIPTISH = /(경비|지출|품의|영수|식대|식비|재료|출장|결의|수당|청구|강사비)/;
 const MAX_SIZE = 20 * 1024 * 1024;
 const MAX_MESSAGES_PER_POLL = 50;
+
+/** 첨부 1건에서 정산 반영용 영수증 후보들을 추출 (직접 PDF/이미지 · ZIP/HWPX · HWP) */
+function buildReceiptCandidates(
+  ext: string,
+  filename: string,
+  subject: string,
+  bytes: Buffer,
+  docType: string,
+): { name: string; buf: Buffer; mime?: string }[] {
+  if ([".pdf", ".jpg", ".jpeg", ".png"].includes(ext)) {
+    const isReceipt =
+      docType === "경비영수증" || docType === "강사비지급확인서" || RECEIPTISH.test(filename) || RECEIPTISH.test(subject);
+    if (!isReceipt) return [];
+    return [{ name: filename, buf: bytes, mime: ext === ".pdf" ? "application/pdf" : undefined }];
+  }
+  if (!RECEIPTISH.test(filename) && !RECEIPTISH.test(subject)) return [];
+  if (ARCHIVE_EXT.includes(ext)) return extractEmbeddedImages(bytes, filename);
+  if (ext === ".hwp") return extractHwpImages(bytes, filename);
+  return [];
+}
 
 function fileExt(name: string): string {
   const i = name.lastIndexOf(".");
@@ -192,7 +222,9 @@ export async function pollMailbox(opts?: {
         const filename = part.filename;
         if (!filename) continue;
         const ext = fileExt(filename);
-        if (!ALLOWED_EXT.includes(ext)) continue;
+        const isDocExt = ALLOWED_EXT.includes(ext);
+        const isArchive = ARCHIVE_EXT.includes(ext);
+        if (!isDocExt && !isArchive) continue;
         const size = part.body?.size ?? 0;
         if (size > MAX_SIZE) continue;
         const attId = part.body?.attachmentId;
@@ -211,50 +243,54 @@ export async function pollMailbox(opts?: {
         const bytes = Buffer.from(b64, "base64");
 
         const docType = teamId ? classifyDocType(subject, filename) : "미분류";
-        const month = detectMonth(subject, receivedAt, bodyText, filename);
-        const sessionNo = await detectSessionNo({
-          teamId,
-          subject,
-          body: bodyText,
-          fileName: filename,
-          receivedAt,
-        });
 
-        const upload = await uploadDocumentToDrive({
-          teamName,
-          docType,
-          month,
-          fileName: filename,
-          bytes,
-        });
-        if (!upload.ok) continue;
+        // 문서 행 생성 — 일반 첨부만(zip/hwpx 컨테이너는 문서로 남기지 않고 내부 영수증만 추출)
+        if (isDocExt) {
+          const month = detectMonth(subject, receivedAt, bodyText, filename);
+          const sessionNo = await detectSessionNo({
+            teamId,
+            subject,
+            body: bodyText,
+            fileName: filename,
+            receivedAt,
+          });
 
-        await db.insert(schema.documents).values({
-          teamId,
-          docType: docType as "출석부" | "코디일지" | "경비영수증" | "강사비지급확인서" | "교육생일지" | "미분류",
-          month,
-          sessionNo,
-          fileName: filename,
-          filePath: upload.webViewLink ?? upload.fileId ?? "",
-          source: "mail",
-          status: "submitted",
-          receivedAt,
-          emailFrom: fromAddress,
-          emailSubject: subject,
-        });
+          const upload = await uploadDocumentToDrive({ teamName, docType, month, fileName: filename, bytes });
+          if (upload.ok) {
+            await db.insert(schema.documents).values({
+              teamId,
+              docType: docType as "출석부" | "코디일지" | "경비영수증" | "강사비지급확인서" | "교육생일지" | "미분류",
+              month,
+              sessionNo,
+              fileName: filename,
+              filePath: upload.webViewLink ?? upload.fileId ?? "",
+              source: "mail",
+              status: "submitted",
+              receivedAt,
+              emailFrom: fromAddress,
+              emailSubject: subject,
+            });
+            attachmentSaved++;
+            newAttachments++;
+            if (docType === "미분류") unclassified++;
+          }
+        }
 
-        attachmentSaved++;
-        newAttachments++;
-        if (docType === "미분류") unclassified++;
-
-        // 경비영수증(이미지/PDF) → OCR 후 팀별/기관 정산에 자동 반영
-        if (teamId && docType === "경비영수증" && [".pdf", ".jpg", ".jpeg", ".png"].includes(ext)) {
+        // 정산 자동 반영 — 직접 PDF/이미지 영수증 + ZIP/HWPX/HWP 내장 영수증을 모두 추출.
+        // 여러 페이지 PDF(수당지급확인서 등)는 페이지별로 분리해 1인 1건 등록.
+        if (teamId) {
           try {
-            const outcome = await processReceiptCandidate(
-              { name: filename, buf: bytes, mime: ext === ".pdf" ? "application/pdf" : undefined },
-              { teamId, fromAddr: fromAddress, subject, messageId: messageIdHeader, receivedAt, subjectSession: receiptSession, teams },
-            );
-            if (outcome.status === "created") expensesCreated++;
+            const cands = buildReceiptCandidates(ext, filename, subject, bytes, docType);
+            if (cands.length > 0) {
+              const expanded = await expandPdfCandidates(cands);
+              for (const c of expanded) {
+                const outcome = await processReceiptCandidate(c, {
+                  teamId, fromAddr: fromAddress, subject, messageId: messageIdHeader,
+                  receivedAt, subjectSession: receiptSession, teams,
+                });
+                if (outcome.status === "created") expensesCreated++;
+              }
+            }
           } catch {
             // 정산 반영 실패해도 서류 수집 자체는 유지
           }

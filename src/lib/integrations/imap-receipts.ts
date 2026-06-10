@@ -13,11 +13,12 @@ import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
 import { downloadDriveFile, uploadDocumentToDrive } from "./drive";
 import { pickNearestSessionNo, AUTO_SESSION_CATEGORIES } from "@/lib/expense";
 import AdmZip from "adm-zip";
+import iconv from "iconv-lite";
 import fs from "fs";
-import os from "os";
 import path from "path";
-import { execFileSync } from "child_process";
-import { EXTRA_COORDINATOR_EMAILS } from "./coordinator-overrides";
+import { EXTRA_COORDINATOR_EMAILS, EXTRA_EMAIL_TO_MATCH } from "./coordinator-overrides";
+import { extractHwpImagesFromBuffer } from "./hwp";
+import { PDFDocument } from "pdf-lib";
 
 const RECEIPTS_DIR = "data/receipts";
 
@@ -66,60 +67,90 @@ function getMimeForOcr(contentType?: string): string | undefined {
   return undefined;
 }
 
-/** HWP (구형 OLE) 파일에서 BinData 이미지 추출 — Python olefile 사용 */
-function extractHwpImages(hwpBuf: Buffer, label: string): { name: string; buf: Buffer }[] {
-  const pythonPath = process.env.PYTHON_PATH || "C:/Users/IIamHub2/AppData/Local/Python/bin/python.exe";
-  if (!fs.existsSync(pythonPath)) return [];
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hwp-"));
-  const tmpFile = path.join(tmpDir, "input.hwp");
-  fs.writeFileSync(tmpFile, hwpBuf);
+/** HWP (구형 OLE) 파일에서 BinData 이미지 추출 — 순수 JS(cfb + zlib), Vercel 호환 */
+export function extractHwpImages(hwpBuf: Buffer, label: string): { name: string; buf: Buffer }[] {
   try {
-    const out = execFileSync(pythonPath, [path.join(process.cwd(), "scripts/extract_hwp_images.py"), tmpFile, tmpDir], {
-      encoding: "utf-8",
-      timeout: 30000,
-    });
-    const parsed = JSON.parse(out);
-    if (!parsed.ok) return [];
-    const result: { name: string; buf: Buffer }[] = [];
-    for (const img of parsed.images) {
-      if (fs.existsSync(img.path)) {
-        result.push({ name: `${label}::${img.name}`, buf: fs.readFileSync(img.path) });
-      }
-    }
-    return result;
+    return extractHwpImagesFromBuffer(hwpBuf, label);
   } catch {
     return [];
-  } finally {
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
 }
 
-/** ZIP/HWPX 내부의 이미지(영수증 후보) 추출 */
-function extractEmbeddedImages(buf: Buffer, filename: string): { name: string; buf: Buffer }[] {
+/**
+ * 여러 페이지 PDF 후보를 페이지별 단일 PDF 후보로 분리.
+ * 수당지급확인서처럼 한 PDF에 여러 명(페이지당 1명)이 들어있는 경우, 페이지마다 1건씩
+ * OCR·등록되도록 한다. 단일 페이지 PDF·비PDF 후보는 그대로 유지.
+ * (중복키는 후보명 기준이므로 페이지마다 `#p{n}` 을 붙여 구분)
+ */
+export async function expandPdfCandidates(
+  cands: { name: string; buf: Buffer; mime?: string }[],
+): Promise<{ name: string; buf: Buffer; mime?: string }[]> {
+  const out: { name: string; buf: Buffer; mime?: string }[] = [];
+  for (const c of cands) {
+    const isPdf = c.mime === "application/pdf" || c.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) { out.push(c); continue; }
+    try {
+      const src = await PDFDocument.load(c.buf, { ignoreEncryption: true });
+      const n = src.getPageCount();
+      if (n <= 1) { out.push({ ...c, mime: "application/pdf" }); continue; }
+      for (let i = 0; i < n; i++) {
+        const doc = await PDFDocument.create();
+        const [pg] = await doc.copyPages(src, [i]);
+        doc.addPage(pg);
+        const bytes = await doc.save();
+        out.push({ name: `${c.name}#p${i + 1}`, buf: Buffer.from(bytes), mime: "application/pdf" });
+      }
+    } catch {
+      out.push(c); // 분리 실패 시 원본 그대로
+    }
+  }
+  return out;
+}
+
+const RECEIPTISH_RE = /(경비|지출|품의|영수|식대|식비|재료|출장|결의|수당|청구|강사비)/;
+const NON_RECEIPT_RE = /(출석부|등록카드|개인정보)/;
+
+/** ZIP 엔트리명 디코딩 — UTF-8 우선, 깨지면 CP949(한글 zip) 폴백 */
+function decodeZipName(e: AdmZip.IZipEntry): string {
+  const raw = (e as unknown as { rawEntryName?: Buffer }).rawEntryName;
+  if (raw && raw.length) {
+    const utf8 = raw.toString("utf8");
+    if (!utf8.includes("�")) return utf8;
+    try { return iconv.decode(raw, "cp949"); } catch { /* fall through */ }
+  }
+  return e.entryName;
+}
+
+/** ZIP/HWPX 내부의 이미지·PDF(영수증 후보) 추출 — 한글 파일명(CP949) 대응 */
+export function extractEmbeddedImages(buf: Buffer, filename: string): { name: string; buf: Buffer }[] {
   const out: { name: string; buf: Buffer }[] = [];
   const lower = filename.toLowerCase();
+  // 컨테이너(zip) 파일명 자체가 영수증류면, 내부 HWP/HWPX 엔트리명이 애매해도 추출 허용
+  const containerReceiptish = RECEIPTISH_RE.test(filename);
   try {
     if (lower.endsWith(".zip")) {
       const zip = new AdmZip(buf);
       for (const e of zip.getEntries()) {
         if (e.isDirectory) continue;
-        const innerLower = e.entryName.toLowerCase();
+        const decoded = decodeZipName(e);
+        const base = decoded.split(/[\\/]/).pop() ?? decoded;
+        const innerLower = decoded.toLowerCase();
         // ZIP 안의 직접 PDF/이미지
         if (/\.(pdf|jpe?g|png)$/i.test(innerLower)) {
-          // 출석부, 교육생등록카드는 영수증 아님 — 스킵
-          if (/(출석부|등록카드|개인정보)/.test(e.entryName)) continue;
-          out.push({ name: `${filename}::${e.entryName}`, buf: e.getData() });
+          // 출석부, 교육생등록카드는 영수증 아님 — 파일명(폴더 제외)으로 판별
+          if (NON_RECEIPT_RE.test(base)) continue;
+          out.push({ name: `${filename}::${base}`, buf: e.getData() });
         }
         // ZIP 안의 HWPX (재귀)
         else if (innerLower.endsWith(".hwpx")) {
-          if (!/(경비|지출|품의|영수|식대|식비|재료|출장|결의)/.test(e.entryName)) continue;
-          const inner = extractEmbeddedImages(e.getData(), e.entryName);
-          for (const i of inner) out.push({ name: `${filename}::${e.entryName}::${i.name.split("::").pop()}`, buf: i.buf });
+          if (!containerReceiptish && !RECEIPTISH_RE.test(base)) continue;
+          const inner = extractEmbeddedImages(e.getData(), base);
+          for (const i of inner) out.push({ name: `${filename}::${base}::${i.name.split("::").pop()}`, buf: i.buf });
         }
         // ZIP 안의 HWP (구형 OLE)
         else if (innerLower.endsWith(".hwp")) {
-          if (!/(경비|지출|품의|영수|식대|식비|재료|출장|결의)/.test(e.entryName)) continue;
-          const hwpImgs = extractHwpImages(e.getData(), e.entryName);
+          if (!containerReceiptish && !RECEIPTISH_RE.test(base)) continue;
+          const hwpImgs = extractHwpImages(e.getData(), base);
           for (const i of hwpImgs) out.push({ name: `${filename}::${i.name}`, buf: i.buf });
         }
       }
@@ -153,7 +184,20 @@ async function pickTeam(fromAddress: string, subject: string, body: string): Pro
   const matched = teams.filter(
     (t) => t.coordinatorEmail && t.coordinatorEmail.toLowerCase() === fromAddress.toLowerCase()
   );
-  if (matched.length === 0) return null;
+  if (matched.length === 0) {
+    // DB coordinatorEmail 미설정 보강 — 코드 override(작목/이름 일부)로 팀 매칭.
+    // 매칭 결과가 팀 1개로 유일할 때만 사용(오분류 방지).
+    const m = EXTRA_EMAIL_TO_MATCH[fromAddress.toLowerCase()];
+    if (m) {
+      const byOverride = teams.filter(
+        (t) =>
+          (!m.product || t.product === m.product) &&
+          (!m.nameIncludes || (t.name ?? "").includes(m.nameIncludes))
+      );
+      if (byOverride.length === 1) return byOverride[0].id;
+    }
+    return null;
+  }
   if (matched.length === 1) return matched[0].id;
 
   // 여러 팀 — 키워드로 좁히기
@@ -317,6 +361,21 @@ export async function processReceiptCandidate(
       });
       return { status: "created", detail: `기관정산(${kind})` };
     }
+
+    // 교차출처 중복 방지 — 같은 팀·일자·금액의 지출이 이미 있으면(수동 등록/이전 수집 등) 스킵.
+    // mailMessageId 기반 중복체크만으로는 다른 경로(수동)로 먼저 들어온 동일 건을 못 거른다.
+    const sameExpense = await db
+      .select({ id: schema.expenses.id })
+      .from(schema.expenses)
+      .where(
+        and(
+          eq(schema.expenses.teamId, teamId),
+          eq(schema.expenses.spentDate, spent),
+          eq(schema.expenses.totalAmount, total),
+        ),
+      )
+      .limit(1);
+    if (sameExpense.length > 0) return { status: "duplicate" };
 
     let autoSessionNo: number | null = subjectSession;
     if (autoSessionNo == null && AUTO_SESSION_CATEGORIES.has(category)) {
@@ -492,7 +551,10 @@ export async function importReceiptsFromMail(opts?: {
             }
           }
 
-          for (const cand of receiptCandidates) {
+          // 여러 페이지 PDF(수당지급확인서 등)는 페이지별로 분리해 1인 1건 등록
+          const expandedCandidates = await expandPdfCandidates(receiptCandidates);
+
+          for (const cand of expandedCandidates) {
             const outcome = await processReceiptCandidate(cand, {
               teamId, fromAddr, subject, messageId, receivedAt, subjectSession, teams,
             });
