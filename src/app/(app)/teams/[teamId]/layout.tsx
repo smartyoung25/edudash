@@ -74,8 +74,8 @@ export default async function TeamLayout({
               <span className="flex items-center gap-1"><CalendarClock className="h-4 w-4" />최종 {formatDate(team.endDate)}</span>
             </div>
 
-            {/* 담당자 카드 + 특이사항 */}
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 items-start gap-2 max-w-4xl pt-1">
+            {/* 담당자 카드 + 특이사항(2칸 = 담당자 카드의 약 2배 너비) */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 items-start gap-2 max-w-5xl pt-1">
               <div className="rounded-lg border bg-muted/20 p-3 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <GraduationCap className="h-3.5 w-3.5" />
@@ -110,7 +110,9 @@ export default async function TeamLayout({
                   </a>
                 )}
               </div>
-              <TeamNotes teamId={teamId} notes={noteRows} canEdit={canEditNotes} />
+              <div className="sm:col-span-2 lg:col-span-2">
+                <TeamNotes teamId={teamId} notes={noteRows} canEdit={canEditNotes} />
+              </div>
             </div>
           </div>
           <div className="min-w-[260px] space-y-2">
