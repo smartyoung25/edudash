@@ -33,6 +33,17 @@ export const teams = sqliteTable("teams", {
   coordinatorEmail: text("coordinator_email"),
 });
 
+// 팀 특이사항 — 관리자·코디가 날짜별로 기록하는 메모
+export const teamNotes = sqliteTable("team_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  noteDate: text("note_date").notNull(),        // YYYY-MM-DD (사용자 입력)
+  content: text("content").notNull(),
+  createdBy: integer("created_by"),             // users.id
+  createdByName: text("created_by_name"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export const members = sqliteTable("members", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),

@@ -1,5 +1,5 @@
 import { db, schema } from "@/db/client";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { getTeamProgress } from "@/lib/kpi";
 import { PRODUCT_COLORS, type Product } from "@/lib/teams";
 import { cn, formatDate } from "@/lib/utils";
 import { TeamTabs } from "./team-tabs";
+import { TeamNotes } from "./team-notes";
 import { requireAuth } from "@/lib/auth";
 import { isTeamScoped } from "@/lib/permissions";
 
@@ -31,12 +32,26 @@ export default async function TeamLayout({
     redirect(`/teams/${session.teamId}`);
   }
 
-  const [rows, progress] = await Promise.all([
+  const [rows, progress, noteRows] = await Promise.all([
     db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1),
     getTeamProgress(teamId),
+    db
+      .select({
+        id: schema.teamNotes.id,
+        noteDate: schema.teamNotes.noteDate,
+        content: schema.teamNotes.content,
+        createdByName: schema.teamNotes.createdByName,
+      })
+      .from(schema.teamNotes)
+      .where(eq(schema.teamNotes.teamId, teamId))
+      .orderBy(desc(schema.teamNotes.noteDate), desc(schema.teamNotes.id)),
   ]);
   const team = rows[0];
   if (!team) notFound();
+
+  // 특이사항 작성 권한: 관리자 또는 (자기 팀) 코디네이터
+  const canEditNotes =
+    session.role === "admin" || (session.role === "coordinator" && session.teamId === teamId);
 
   return (
     <div>
@@ -59,8 +74,8 @@ export default async function TeamLayout({
               <span className="flex items-center gap-1"><CalendarClock className="h-4 w-4" />최종 {formatDate(team.endDate)}</span>
             </div>
 
-            {/* 담당자 카드 */}
-            <div className="grid sm:grid-cols-2 gap-2 max-w-2xl pt-1">
+            {/* 담당자 카드 + 특이사항 */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 items-start gap-2 max-w-4xl pt-1">
               <div className="rounded-lg border bg-muted/20 p-3 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <GraduationCap className="h-3.5 w-3.5" />
@@ -95,6 +110,7 @@ export default async function TeamLayout({
                   </a>
                 )}
               </div>
+              <TeamNotes teamId={teamId} notes={noteRows} canEdit={canEditNotes} />
             </div>
           </div>
           <div className="min-w-[260px] space-y-2">
