@@ -3,6 +3,7 @@
   "regions": ["icn1"],
   "crons": [
     { "path": "/api/integrations/mail/sync?includeRead=1&sinceDays=14", "schedule": "0 0 * * *" },
+    { "path": "/api/integrations/sheets/sync/auto", "schedule": "30 0 * * *" },
     { "path": "/api/reports/weekly/auto", "schedule": "0 11 * * 4" }
   ],
   "functions": {
@@ -10,6 +11,7 @@
     "src/app/api/reports/weekly/auto/route.ts": { "maxDuration": 60 },
     "src/app/api/integrations/mail/sync/route.ts": { "maxDuration": 60 },
     "src/app/api/integrations/sheets/sync/route.ts": { "maxDuration": 60 },
+    "src/app/api/integrations/sheets/sync/auto/route.ts": { "maxDuration": 60 },
     "src/app/api/documents/upload/route.ts": { "maxDuration": 30 }
   }
 }
