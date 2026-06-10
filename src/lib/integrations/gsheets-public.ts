@@ -280,6 +280,21 @@ export async function syncPublicSheet(spreadsheetId: string): Promise<SheetSyncR
       }
     }
 
+    // 정합성 정리(reconcile) — 시트에서 사라진 시트출처 보고 삭제(중복/오래된 날짜 정리).
+    // 파싱이 0건이면(탭 형식 깨짐 등) 통째 삭제 위험이 있으므로 건너뜀. 수동입력(source=manual)은 보존.
+    if (sessions.length > 0) {
+      const valid = new Set(sessions.map((s) => `${s.sessionNo}|${s.reportDate}`));
+      const existingSheet = await db
+        .select({ id: schema.dailyReports.id, sessionNo: schema.dailyReports.sessionNo, reportDate: schema.dailyReports.reportDate })
+        .from(schema.dailyReports)
+        .where(and(eq(schema.dailyReports.teamId, teamId), eq(schema.dailyReports.source, "sheet")));
+      for (const e of existingSheet) {
+        if (!valid.has(`${e.sessionNo}|${e.reportDate}`)) {
+          await db.delete(schema.dailyReports).where(eq(schema.dailyReports.id, e.id));
+        }
+      }
+    }
+
     teamResults.push({ name: sheetName, sessions: upserted, skipped });
     totalUpserted += upserted;
   }
