@@ -40,6 +40,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ teamId:
   return NextResponse.json({ ok: true, id: row.id });
 }
 
+export async function PATCH(req: Request, { params }: { params: Promise<{ teamId: string }> }) {
+  const session = await requireAuth();
+  const { teamId: teamIdStr } = await params;
+  const teamId = Number(teamIdStr);
+  if (!Number.isFinite(teamId)) return NextResponse.json({ error: "잘못된 팀" }, { status: 400 });
+  if (!canEditNotes(session.role, session.teamId, teamId)) {
+    return NextResponse.json({ error: "권한 없음" }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const id = Number(body.id);
+  const noteDate = String(body.noteDate ?? "").trim();
+  const content = String(body.content ?? "").trim();
+  if (!Number.isFinite(id)) return NextResponse.json({ error: "id 누락" }, { status: 400 });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(noteDate)) return NextResponse.json({ error: "날짜를 입력하세요" }, { status: 400 });
+  if (!content) return NextResponse.json({ error: "내용을 입력하세요" }, { status: 400 });
+  if (content.length > 2000) return NextResponse.json({ error: "내용이 너무 깁니다(2000자 이내)" }, { status: 400 });
+
+  await db
+    .update(schema.teamNotes)
+    .set({ noteDate, content })
+    .where(and(eq(schema.teamNotes.id, id), eq(schema.teamNotes.teamId, teamId)));
+
+  return NextResponse.json({ ok: true });
+}
+
 export async function DELETE(req: Request, { params }: { params: Promise<{ teamId: string }> }) {
   const session = await requireAuth();
   const { teamId: teamIdStr } = await params;
