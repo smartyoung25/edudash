@@ -42,6 +42,10 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
   const [teamRow] = await db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1);
   if (!teamRow) notFound();
 
+  const moveTeams = session.role === "admin"
+    ? await db.select({ id: schema.teams.id, name: schema.teams.name }).from(schema.teams)
+    : [];
+
   const expenses = await db.select().from(schema.expenses)
     .where(and(eq(schema.expenses.teamId, teamId), isNotNull(schema.expenses.receiptFilePath)))
     .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
@@ -138,6 +142,8 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
                   <div className="text-sm font-bold tabular-nums">{fmt(e.totalAmount)}원</div>
                   <ReceiptViewer
                     expenseId={e.id}
+                    teamId={teamId}
+                    teams={moveTeams}
                     totalSessions={teamRow.totalSessions}
                     sessionNo={e.sessionNo}
                     mimeType={e.receiptMimeType}

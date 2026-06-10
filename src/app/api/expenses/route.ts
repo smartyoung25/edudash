@@ -121,6 +121,11 @@ export async function PATCH(req: Request) {
     allowed.sessionNo = n != null && Number.isFinite(n) ? n : null;
     allowed.sessionId = null;
   }
+  // 팀 이동 — 관리자만(잘못된 팀으로 수집된 영수증 정정용). 세션/회차 정합성 위해 session_id 초기화.
+  if (body.teamId !== undefined && session.role === "admin") {
+    const t = Number(body.teamId);
+    if (Number.isFinite(t)) { allowed.teamId = t; allowed.sessionId = null; }
+  }
   if (body.vendorName !== undefined) allowed.vendorName = body.vendorName || null;
   if (body.vendorCeo !== undefined) allowed.vendorCeo = body.vendorCeo || null;
   if (body.vendorBizNo !== undefined) allowed.vendorBizNo = body.vendorBizNo || null;

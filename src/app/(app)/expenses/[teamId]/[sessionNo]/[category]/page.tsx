@@ -53,6 +53,11 @@ export default async function SessionCategoryPage({
   const [teamRow] = await db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1);
   if (!teamRow) notFound();
 
+  // 관리자만 — 잘못된 팀으로 들어온 영수증을 옮길 수 있도록 팀 목록 제공
+  const moveTeams = session.role === "admin"
+    ? await db.select({ id: schema.teams.id, name: schema.teams.name }).from(schema.teams)
+    : [];
+
   const isNoneSession = sessionNoStr === "none";
   const sessionNo = isNoneSession ? null : Number(sessionNoStr);
   if (!isNoneSession && (!Number.isFinite(sessionNo) || (sessionNo as number) < 1 || (sessionNo as number) > teamRow.totalSessions)) {
@@ -149,6 +154,8 @@ export default async function SessionCategoryPage({
                         <div className="mt-1 flex items-center gap-1 flex-wrap">
                           <ReceiptViewer
                             expenseId={e.id}
+                            teamId={teamId}
+                            teams={moveTeams}
                             totalSessions={teamRow.totalSessions}
                             sessionNo={e.sessionNo}
                             mimeType={e.receiptMimeType}

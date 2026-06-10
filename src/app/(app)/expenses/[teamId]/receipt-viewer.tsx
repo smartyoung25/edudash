@@ -39,6 +39,8 @@ export function ReceiptViewer({
   status = "ok",
   totalSessions = 0,
   sessionNo = null,
+  teamId,
+  teams = [],
 }: {
   expenseId: number;
   mimeType?: string | null;
@@ -48,6 +50,8 @@ export function ReceiptViewer({
   status?: ReceiptStatus;
   totalSessions?: number;
   sessionNo?: number | null;
+  teamId?: number;
+  teams?: { id: number; name: string }[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -82,6 +86,7 @@ export function ReceiptViewer({
 
   const [form, setForm] = useState(() => ({
     spentDate: initial?.spentDate ?? "",
+    teamId: teamId != null ? String(teamId) : "",
     sessionNo: sessionNo == null ? "none" : String(sessionNo),
     category: initial?.category ?? "",
     vendorName: initial?.vendorName ?? "",
@@ -226,6 +231,19 @@ export function ReceiptViewer({
                     )}
                   </div>
                 </div>
+
+                {teams.length > 0 && (
+                  <div>
+                    <Label className="text-xs">팀 (이동 · 관리자)</Label>
+                    <Select value={form.teamId} onValueChange={(v) => setForm((f) => ({ ...f, teamId: v }))}>
+                      <SelectTrigger><SelectValue placeholder="팀 선택" /></SelectTrigger>
+                      <SelectContent>
+                        {teams.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">다른 팀으로 잘못 들어온 영수증을 옮길 때만 변경</div>
+                  </div>
+                )}
 
                 <div>
                   <Label className="text-xs">회차 (이동)</Label>

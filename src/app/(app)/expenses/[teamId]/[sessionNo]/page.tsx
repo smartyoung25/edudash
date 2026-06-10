@@ -51,6 +51,10 @@ export default async function SessionExpensesPage({
   const [teamRow] = await db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1);
   if (!teamRow) notFound();
 
+  const moveTeams = session.role === "admin"
+    ? await db.select({ id: schema.teams.id, name: schema.teams.name }).from(schema.teams)
+    : [];
+
   const isNoneSession = sessionNoStr === "none";
   const sessionNo = isNoneSession ? null : Number(sessionNoStr);
   if (!isNoneSession && (!Number.isFinite(sessionNo) || (sessionNo as number) < 1 || (sessionNo as number) > teamRow.totalSessions)) {
@@ -172,6 +176,8 @@ export default async function SessionExpensesPage({
                         <div className="mt-1">
                           <ReceiptViewer
                             expenseId={e.id}
+                            teamId={teamId}
+                            teams={moveTeams}
                             totalSessions={teamRow.totalSessions}
                             sessionNo={e.sessionNo}
                             mimeType={e.receiptMimeType}
