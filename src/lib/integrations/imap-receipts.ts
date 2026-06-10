@@ -364,18 +364,23 @@ export async function processReceiptCandidate(
 
     // 교차출처 중복 방지 — 같은 팀·일자·금액의 지출이 이미 있으면(수동 등록/이전 수집 등) 스킵.
     // mailMessageId 기반 중복체크만으로는 다른 경로(수동)로 먼저 들어온 동일 건을 못 거른다.
-    const sameExpense = await db
-      .select({ id: schema.expenses.id })
-      .from(schema.expenses)
-      .where(
-        and(
-          eq(schema.expenses.teamId, teamId),
-          eq(schema.expenses.spentDate, spent),
-          eq(schema.expenses.totalAmount, total),
-        ),
-      )
-      .limit(1);
-    if (sameExpense.length > 0) return { status: "duplicate" };
+    // 단, 강사비·퍼실리테이터비용은 하루에 강사 2~3명이 같은 금액일 수 있으므로 금액기준 스킵을
+    // 적용하지 않는다(여러 강사 수당 누락 방지). 첨부파일 단위 중복(mailMessageId+attachmentName)으로만 거른다.
+    const MULTI_PERSON_CATS = new Set(["강사비", "퍼실리테이터비용"]);
+    if (!MULTI_PERSON_CATS.has(category)) {
+      const sameExpense = await db
+        .select({ id: schema.expenses.id })
+        .from(schema.expenses)
+        .where(
+          and(
+            eq(schema.expenses.teamId, teamId),
+            eq(schema.expenses.spentDate, spent),
+            eq(schema.expenses.totalAmount, total),
+          ),
+        )
+        .limit(1);
+      if (sameExpense.length > 0) return { status: "duplicate" };
+    }
 
     let autoSessionNo: number | null = subjectSession;
     if (autoSessionNo == null && AUTO_SESSION_CATEGORIES.has(category)) {

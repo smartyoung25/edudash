@@ -94,7 +94,23 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
     setOcrRawText(null);
   }
 
-  function submit() {
+  // 같은 회차에 강사가 2~3명일 수 있어, 저장 후 회차·사용일·카테고리는 유지하고
+  // 거래처·금액·영수증만 비워 다음 사람을 바로 입력할 수 있게 한다.
+  function partialReset() {
+    setSupplyAmount("");
+    setVatAmount("");
+    setVendorType("");
+    setVendorBizNo("");
+    setVendorName("");
+    setVendorCeo("");
+    setMemo("");
+    setReceiptFile(null);
+    setOcrNote(null);
+    setOcrRawText(null);
+    setError(null);
+  }
+
+  function submit(continueAdding = false) {
     setError(null);
     if (!category) return setError("카테고리를 선택해주세요");
     if (!spentDate) return setError("사용일을 입력해주세요");
@@ -135,9 +151,13 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
         setError(d.error || "저장 실패");
         return;
       }
-      reset();
-      setOpen(false);
       router.refresh();
+      if (continueAdding) {
+        partialReset(); // 회차·사용일·카테고리 유지 → 다음 강사 바로 입력
+      } else {
+        reset();
+        setOpen(false);
+      }
     });
   }
 
@@ -273,9 +293,14 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
           </div>
           {error && <div className="text-sm text-red-600">{error}</div>}
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>취소</Button>
-          <Button onClick={submit} disabled={isPending}>{isPending ? "저장 중..." : "저장"}</Button>
+          {(category === "강사비" || category === "퍼실리테이터비용") && (
+            <Button variant="secondary" onClick={() => submit(true)} disabled={isPending} title="저장 후 같은 회차에 다음 강사를 이어서 입력">
+              {isPending ? "저장 중..." : "저장 후 계속 추가"}
+            </Button>
+          )}
+          <Button onClick={() => submit(false)} disabled={isPending}>{isPending ? "저장 중..." : "저장"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
