@@ -48,6 +48,8 @@ resetClassifierCache();
 const teams = (await c.execute("SELECT id, name FROM teams")).rows.map((r) => ({ id: Number(r.id), name: r.name }));
 const teamName = (id) => teams.find((t) => t.id === Number(id))?.name ?? null;
 const containerOf = (att) => String(att || "").split("::")[0];
+// 영수증류 파일만 — 교육일일보고서·코디일지·출석부 등 문서 HWP의 내장 이미지 오수집 방지.
+const RECEIPTISH_RE = /(경비|지출|품의|영수|식대|식비|재료|출장|결의|수당|청구|강사비|간식|다과|교재)/;
 
 // ───────────── Phase 1: 오배치 정산 이동 ─────────────
 console.log("=== Phase 1: 오배치 정산(expenses) 팀 이동 ===");
@@ -124,7 +126,15 @@ for (const ref of refs) {
     if (!att.data.data) continue;
     const buf = Buffer.from(att.data.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 
-    let cands = (ext === ".hwp") ? extractHwpImages(buf, fn) : extractEmbeddedImages(buf, fn);
+    let cands;
+    if (ext === ".zip") {
+      // ZIP 은 내부 파일별 게이팅(extractEmbeddedImages 내부에서 출석부/등록카드 제외 + 영수증류만)
+      cands = extractEmbeddedImages(buf, fn);
+    } else {
+      // 직접 .hwp/.hwpx 는 파일명이 영수증류일 때만(문서 HWP 내장 이미지 오수집 방지)
+      if (!RECEIPTISH_RE.test(fn) && !RECEIPTISH_RE.test(subject)) continue;
+      cands = (ext === ".hwp") ? extractHwpImages(buf, fn) : extractEmbeddedImages(buf, fn);
+    }
     cands = await expandPdfCandidates(cands.map((x) => ({ name: x.name, buf: x.buf, mime: x.mime })));
     if (!cands.length) continue;
 

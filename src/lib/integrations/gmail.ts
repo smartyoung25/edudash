@@ -47,8 +47,12 @@ function buildReceiptCandidates(
     if (!isReceipt) return [];
     return [{ name: filename, buf: bytes, mime: ext === ".pdf" ? "application/pdf" : undefined }];
   }
+  // ZIP 컨테이너는 이름이 영수증류가 아니어도(예: "결과보고.zip") 내부에 영수증이 들어있다.
+  // extractEmbeddedImages 가 내부 파일별로 게이팅(출석부/등록카드 제외 + 영수증류만)하므로 컨테이너명 게이트 없이 통과.
+  if (ext === ".zip") return extractEmbeddedImages(bytes, filename);
+  // 직접 .hwpx/.hwp 는 파일명이 영수증류일 때만(교육일일보고서 등 문서 HWP 내장 이미지 오수집 방지)
   if (!RECEIPTISH.test(filename) && !RECEIPTISH.test(subject)) return [];
-  if (ARCHIVE_EXT.includes(ext)) return extractEmbeddedImages(bytes, filename);
+  if (ext === ".hwpx") return extractEmbeddedImages(bytes, filename);
   if (ext === ".hwp") return extractHwpImages(bytes, filename);
   return [];
 }
@@ -313,14 +317,16 @@ export async function pollMailbox(opts?: {
 
         // 정산 자동 반영 — 직접 PDF/이미지 영수증 + ZIP/HWPX/HWP 내장 영수증을 모두 추출.
         // 여러 페이지 PDF(수당지급확인서 등)는 페이지별로 분리해 1인 1건 등록.
-        if (teamId) {
+        // 첨부(컨테이너)명이 특정 팀을 명시하면 그 팀으로 정산(겸임 코디가 한 메일에 여러 팀 ZIP을 묶어 보내는 경우 보정).
+        const recvTeamId = (await classifyTeamByText(filename)) ?? teamId;
+        if (recvTeamId) {
           try {
             const cands = buildReceiptCandidates(ext, filename, subject, bytes, docType);
             if (cands.length > 0) {
               const expanded = await expandPdfCandidates(cands);
               for (const c of expanded) {
                 const outcome = await processReceiptCandidate(c, {
-                  teamId, fromAddr: fromAddress, subject, messageId: messageIdHeader,
+                  teamId: recvTeamId, fromAddr: fromAddress, subject, messageId: messageIdHeader,
                   receivedAt, subjectSession: receiptSession, teams,
                 });
                 if (outcome.status === "created") expensesCreated++;
