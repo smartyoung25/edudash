@@ -1,14 +1,15 @@
 import { db, schema } from "@/db/client";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { env, isMailEnabled } from "../env";
 import { getGmailClient } from "./google-auth";
 import { uploadDocumentToDrive } from "./drive";
-import { classifyTeam, classifyDocType, detectMonth, detectSessionNo, resetClassifierCache } from "./classifier";
+import { classifyTeam, classifyTeamByText, classifyDocType, detectMonth, detectSessionNo, resetClassifierCache } from "./classifier";
 import {
   processReceiptCandidate,
   detectSessionNo as detectReceiptSessionNo,
   extractEmbeddedImages,
   extractHwpImages,
+  extractEmbeddedDocuments,
   expandPdfCandidates,
 } from "./imap-receipts";
 import { EXTRA_COORDINATOR_EMAILS } from "./coordinator-overrides";
@@ -181,6 +182,9 @@ export async function pollMailbox(opts?: {
         continue;
       }
 
+      // 메시지 단위 오류 격리 — 한 메일의 첨부 다운로드/업로드 실패가 폴 전체를 중단시키지 않게.
+      // 실패해도 catch에서 mailLog 마커를 남겨(=error) 무한 재수집을 막는다.
+      try {
       // 본문 텍스트 추출 (text/plain 우선, 없으면 text/html 평문화)
       let bodyText = "";
       for (const p of walkParts(payload)) {
@@ -218,6 +222,55 @@ export async function pollMailbox(opts?: {
       const receiptSession = detectReceiptSessionNo(subject) ?? detectReceiptSessionNo(bodyText);
       let attachmentSaved = 0;
 
+      // 문서 1건을 documents 행으로 저장 (직접 첨부 · ZIP 내부 문서 공용).
+      // 파일명이 특정 팀을 명시하면 그 팀으로 분류(겸임 코디 메일이 엉뚱한 팀에 묶이는 것 보정),
+      // 아니면 메일 단위 teamId 사용.
+      const saveDoc = async (fileName: string, fileBytes: Buffer): Promise<void> => {
+        const fileTeam = await classifyTeamByText(fileName);
+        const docTeamId = fileTeam ?? teamId;
+        const docTeamName = teamNameLookup(docTeamId, teams);
+        const fileDocType = docTeamId ? classifyDocType(subject, fileName) : "미분류";
+        const month = detectMonth(subject, receivedAt, bodyText, fileName);
+        const sessionNo = await detectSessionNo({ teamId: docTeamId, subject, body: bodyText, fileName, receivedAt });
+
+        // 멱등 INSERT — 같은 팀+파일명이면 이미 수집된 것으로 보고 건너뜀.
+        // (mailLog 마커가 누락된 채 재폴이 돌아도 문서가 중복 생성되지 않도록 방어)
+        const dup = await db
+          .select({ id: schema.documents.id })
+          .from(schema.documents)
+          .where(
+            and(
+              eq(schema.documents.source, "mail"),
+              eq(schema.documents.fileName, fileName),
+              docTeamId
+                ? eq(schema.documents.teamId, docTeamId)
+                : and(isNull(schema.documents.teamId), eq(schema.documents.emailFrom, fromAddress)),
+            ),
+          )
+          .limit(1);
+        if (dup.length > 0) { attachmentSaved++; return; }
+
+        const upload = await uploadDocumentToDrive({ teamName: docTeamName, docType: fileDocType, month, fileName, bytes: fileBytes });
+        if (upload.ok) {
+          await db.insert(schema.documents).values({
+            teamId: docTeamId,
+            docType: fileDocType as "출석부" | "코디일지" | "경비영수증" | "강사비지급확인서" | "교육생일지" | "미분류",
+            month,
+            sessionNo,
+            fileName,
+            filePath: upload.webViewLink ?? upload.fileId ?? "",
+            source: "mail",
+            status: "submitted",
+            receivedAt,
+            emailFrom: fromAddress,
+            emailSubject: subject,
+          });
+          attachmentSaved++;
+          newAttachments++;
+          if (fileDocType === "미분류") unclassified++;
+        }
+      };
+
       for (const part of walkParts(payload)) {
         const filename = part.filename;
         if (!filename) continue;
@@ -244,35 +297,17 @@ export async function pollMailbox(opts?: {
 
         const docType = teamId ? classifyDocType(subject, filename) : "미분류";
 
-        // 문서 행 생성 — 일반 첨부만(zip/hwpx 컨테이너는 문서로 남기지 않고 내부 영수증만 추출)
+        // 문서 행 생성:
+        //  - 직접 문서 첨부(pdf/hwp/xlsx 등)는 그대로 1건
+        //  - .hwpx 는 그 자체가 한글 문서 → 1건 저장(내부 영수증은 아래에서 별도 추출)
+        //  - .zip 컨테이너는 내부 문서 파일들을 각각 1건씩 추출 저장
         if (isDocExt) {
-          const month = detectMonth(subject, receivedAt, bodyText, filename);
-          const sessionNo = await detectSessionNo({
-            teamId,
-            subject,
-            body: bodyText,
-            fileName: filename,
-            receivedAt,
-          });
-
-          const upload = await uploadDocumentToDrive({ teamName, docType, month, fileName: filename, bytes });
-          if (upload.ok) {
-            await db.insert(schema.documents).values({
-              teamId,
-              docType: docType as "출석부" | "코디일지" | "경비영수증" | "강사비지급확인서" | "교육생일지" | "미분류",
-              month,
-              sessionNo,
-              fileName: filename,
-              filePath: upload.webViewLink ?? upload.fileId ?? "",
-              source: "mail",
-              status: "submitted",
-              receivedAt,
-              emailFrom: fromAddress,
-              emailSubject: subject,
-            });
-            attachmentSaved++;
-            newAttachments++;
-            if (docType === "미분류") unclassified++;
+          await saveDoc(filename, bytes);
+        } else if (ext === ".hwpx") {
+          await saveDoc(filename, bytes);
+        } else if (ext === ".zip") {
+          for (const d of extractEmbeddedDocuments(bytes, filename)) {
+            await saveDoc(d.name, d.buf);
           }
         }
 
@@ -315,6 +350,24 @@ export async function pollMailbox(opts?: {
           id: ref.id,
           requestBody: { removeLabelIds: ["UNREAD"] },
         });
+      }
+      } catch (err) {
+        // 이 메일 처리 중 오류 — 다음 메일로 계속. 마커를 남겨 다음 폴에서 무한 재수집되지 않게.
+        // (멱등 INSERT와 함께, 마커 없이 문서만 남는 창을 제거)
+        try {
+          await db.insert(schema.mailLog).values({
+            messageId: messageIdHeader,
+            fromAddress,
+            subject,
+            receivedAt,
+            classifiedTeamId: null,
+            classifiedDocType: null,
+            processedStatus: "error",
+            errorMessage: err instanceof Error ? err.message : String(err),
+          });
+        } catch {
+          // 마커 INSERT마저 실패(예: messageId UNIQUE 충돌) — 무시하고 다음 메일로
+        }
       }
     }
 

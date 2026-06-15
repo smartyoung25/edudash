@@ -171,6 +171,41 @@ export function extractEmbeddedImages(buf: Buffer, filename: string): { name: st
   return out;
 }
 
+// ZIP 내부에서 "서류"로 등록할 문서 파일.
+//  - 문서 확장자(pdf/hwp/hwpx/xlsx/docx)는 항상 문서로 취급.
+//  - 이미지(jpg/png)는 영수증일 확률이 높아 제외하되, 파일명이 서류유형을 명시하면(출석부·일지·등록카드 등) 문서로 포함.
+const DOC_INNER_RE = /\.(pdf|hwp|hwpx|xlsx|docx)$/i;
+const DOC_IMG_RE = /\.(jpe?g|png)$/i;
+const DOC_NAME_RE = /(출석부|코디일지|코디\s*일지|교육생일지|학습일지|운영일지|교육일지|등록카드)/;
+
+/**
+ * ZIP 컨테이너 내부의 문서 파일(출석부·코디일지·교육생일지·강사비·정산 등)을 추출.
+ * 영수증 추출(extractEmbeddedImages)과 별개로, 묶음 ZIP 안의 문서들이 documents 행으로
+ * 수집되도록 한다. 한글 파일명(CP949) 대응.
+ */
+export function extractEmbeddedDocuments(buf: Buffer, containerName: string): { name: string; buf: Buffer }[] {
+  const out: { name: string; buf: Buffer }[] = [];
+  if (!containerName.toLowerCase().endsWith(".zip")) return out;
+  try {
+    const zip = new AdmZip(buf);
+    for (const e of zip.getEntries()) {
+      if (e.isDirectory) continue;
+      const decoded = decodeZipName(e);
+      if (decoded.includes("__MACOSX")) continue;
+      const base = decoded.split(/[\\/]/).pop() ?? decoded;
+      if (!base || base.startsWith(".")) continue; // 숨김/시스템 파일
+      const isDocFile = DOC_INNER_RE.test(base);
+      const isDocImage = DOC_IMG_RE.test(base) && DOC_NAME_RE.test(base); // 출석부 등 서류 이미지만
+      if (!isDocFile && !isDocImage) continue;
+      if ((e.header?.size ?? 0) < 1000) continue; // 빈/잡파일
+      out.push({ name: base, buf: e.getData() });
+    }
+  } catch {
+    // 무시 — 손상 ZIP 등
+  }
+  return out;
+}
+
 /** 메일 본문/제목에서 N회차 추출 */
 export function detectSessionNo(text: string): number | null {
   const m = text.match(/(\d{1,2})\s*(?:회\s*차|차\s*시)/);
