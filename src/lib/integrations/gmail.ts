@@ -14,6 +14,7 @@ import {
 } from "./imap-receipts";
 import { EXTRA_COORDINATOR_EMAILS } from "./coordinator-overrides";
 import { isJangseongStrawberry } from "./self-mail-rule";
+import { isUnrelatedBusiness } from "./excluded-business-rule";
 
 export interface MailSyncResult {
   ok: boolean;
@@ -210,6 +211,16 @@ export async function pollMailbox(opts?: {
         fileName: firstAttachmentName,
       });
       const teamName = teamNameLookup(teamId, teams);
+
+      // 교육사업과 무관한 병행 사업(예: aT 스마트 수출전문단지 구축사업) 메일 제외.
+      // 코디·직원이 Fwd 한 타사업 첨부가 미분류로 오수집되는 것을 근본 차단한다.
+      // 읽음 처리해 다음 폴에서 다시 받지 않도록 한다(수동 재스캔 시에는 건드리지 않음).
+      if (isUnrelatedBusiness(subject, bodyText, firstAttachmentName)) {
+        if (!skipMarkRead) {
+          await gmail.users.messages.modify({ userId, id: ref.id, requestBody: { removeLabelIds: ["UNREAD"] } });
+        }
+        continue;
+      }
 
       // stepup2(메일함 본인) 발신 메일 특수 규칙:
       //  - 외부로 나간(보낸) 메일은 일체 수집 안 함
