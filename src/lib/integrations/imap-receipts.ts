@@ -6,7 +6,7 @@
  */
 
 import { ImapFlow } from "imapflow";
-import { simpleParser, type ParsedMail, type Attachment } from "mailparser";
+import { simpleParser, type ParsedMail, type Attachment, type AddressObject } from "mailparser";
 import { db, schema } from "@/db/client";
 import { eq, and } from "drizzle-orm";
 import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
@@ -18,6 +18,7 @@ import fs from "fs";
 import path from "path";
 import { EXTRA_COORDINATOR_EMAILS, EXTRA_EMAIL_TO_MATCH } from "./coordinator-overrides";
 import { extractHwpImagesFromBuffer } from "./hwp";
+import { isJangseongStrawberry } from "./self-mail-rule";
 import { PDFDocument } from "pdf-lib";
 
 const RECEIPTS_DIR = "data/receipts";
@@ -530,6 +531,20 @@ export async function importReceiptsFromMail(opts?: {
           const text = parsed.text ?? "";
           const messageId = parsed.messageId ?? `uid-${uid}`;
           const receivedAt = new Date(parsed.date ?? msg.internalDate ?? new Date()).toISOString();
+
+          // stepup2(메일함 본인) 발신 메일 제외 — gmail.ts 문서수집과 동일 규칙.
+          // 본인이 외부로 보낸/전달한 메일의 첨부를 영수증으로 오수집하지 않는다.
+          // (자기→자기 업로드는 딸기11장성 관련만 허용. stepup2가 team22 코디라 coordEmails에 포함되는 허점 차단.)
+          const selfEmail = (user ?? "").toLowerCase();
+          if (selfEmail && fromAddr === selfEmail) {
+            const addrsOf = (a?: AddressObject | AddressObject[]) =>
+              (Array.isArray(a) ? a : a ? [a] : []).flatMap((o) => o.value ?? []);
+            const recips = [...addrsOf(parsed.to), ...addrsOf(parsed.cc)].map(
+              (a) => (a.address ?? "").toLowerCase(),
+            );
+            if (!recips.includes(selfEmail)) continue; // 외부로 나간 메일 → 제외
+            if (!isJangseongStrawberry(subject, text, parsed.attachments?.[0]?.filename)) continue;
+          }
 
           const teamId = await pickTeam(fromAddr, subject, text);
           if (!teamId) continue;
