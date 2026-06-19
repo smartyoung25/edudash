@@ -68,7 +68,7 @@ export default async function SurveysPage() {
                   <td className="p-3 text-muted-foreground">{formatDate(s.createdAt)}</td>
                   <td className="p-3">
                     <div className="flex items-center justify-end gap-1">
-                      <CopyLinkButton token={s.publicToken} />
+                      <CopyLinkButton token={s.publicToken} status={s.status} />
                       <Link href={`/surveys/${s.id}/qr`}>
                         <Button type="button" size="sm" variant="outline" title="QR 코드"><QrCode className="h-4 w-4" /></Button>
                       </Link>
