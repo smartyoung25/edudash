@@ -10,7 +10,7 @@ import { Plus, Pencil, BarChart3, QrCode } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { SURVEY_STATUS_LABEL } from "@/lib/survey";
 import { ensureSurveyTables } from "@/lib/survey-db";
-import { CopyLinkButton, DeleteSurveyButton } from "./survey-actions";
+import { CopyLinkButton, DeleteSurveyButton, StatusToggleButton } from "./survey-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,7 @@ export default async function SurveysPage() {
                 <th className="p-3">제목</th>
                 <th className="p-3 w-24 text-center">응답수</th>
                 <th className="p-3 w-32">작성일</th>
-                <th className="p-3 w-[320px] text-right">관리</th>
+                <th className="p-3 w-[400px] text-right">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -68,6 +68,7 @@ export default async function SurveysPage() {
                   <td className="p-3 text-muted-foreground">{formatDate(s.createdAt)}</td>
                   <td className="p-3">
                     <div className="flex items-center justify-end gap-1">
+                      <StatusToggleButton id={s.id} status={s.status} />
                       <CopyLinkButton token={s.publicToken} status={s.status} />
                       <Link href={`/surveys/${s.id}/qr`}>
                         <Button type="button" size="sm" variant="outline" title="QR 코드"><QrCode className="h-4 w-4" /></Button>
