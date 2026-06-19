@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, X, ArrowUp, ArrowDown, Download, Upload } from "lucide-react";
 import { QTYPE_LABEL, type QType } from "@/lib/survey";
 
 type QRow = {
@@ -48,7 +48,52 @@ export function SurveyComposer({ initial, questionsLocked }: { initial?: SurveyI
       : [{ ...EMPTY_Q }],
   );
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isSaving, startSave] = useTransition();
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // 엑셀 업로드 → 서버 파싱 → 문항 주입(기존 문항이 있으면 교체 확인).
+  async function onPickExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 같은 파일 재선택 허용
+    if (!file) return;
+    setError(null);
+    setNotice(null);
+    const hasContent = questions.some((q) => q.label.trim());
+    if (hasContent && !confirm("기존 문항을 엑셀 내용으로 교체할까요?")) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/surveys/import-questions", { method: "POST", body: fd });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(typeof d.error === "string" ? d.error : "엑셀을 읽을 수 없습니다"); return; }
+      const parsed = (d.questions ?? []) as {
+        section: string | null;
+        qType: QType;
+        label: string;
+        required: boolean;
+        options: string[];
+      }[];
+      setQuestions(parsed.map((q) => ({
+        section: q.section ?? "",
+        qType: q.qType,
+        label: q.label,
+        required: !!q.required,
+        options: q.options ?? [],
+      })));
+      const warns = (d.warnings ?? []) as string[];
+      setNotice(
+        `문항 ${parsed.length}개를 가져왔습니다.` +
+          (warns.length ? ` ${warns.length}건 건너뜀 — ${warns.slice(0, 3).join(" / ")}${warns.length > 3 ? " …" : ""}` : ""),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "엑셀 업로드 실패");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   function update(i: number, patch: Partial<QRow>) {
     setQuestions((prev) => prev.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
@@ -153,12 +198,32 @@ export function SurveyComposer({ initial, questionsLocked }: { initial?: SurveyI
         </label>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Label className="text-base">문항 ({questions.length})</Label>
-            {questionsLocked && (
+            {questionsLocked ? (
               <span className="text-xs text-amber-600">※ 이미 응답이 있어 문항은 수정해도 반영되지 않습니다.</span>
+            ) : (
+              <div className="flex items-center gap-2">
+                <a
+                  href="/api/surveys/template"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <Download className="h-3.5 w-3.5" /> 양식 다운로드
+                </a>
+                <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={onPickExcel} />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={importing}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4" /> {importing ? "불러오는 중..." : "엑셀로 문항 올리기"}
+                </Button>
+              </div>
             )}
           </div>
+          {notice && <p className="text-xs text-emerald-600">{notice}</p>}
 
           {questions.map((q, i) => (
             <div key={i} className="rounded-lg border p-3 space-y-2.5 bg-muted/20">
