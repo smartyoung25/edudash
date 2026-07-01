@@ -69,7 +69,51 @@ export async function classifyByEmail(fromAddress: string): Promise<number | nul
   return null;
 }
 
-// 종합 — 보낸이 → 제목/본문/파일명 별칭 순서로 시도
+// 겸임 코디(한 이메일이 여러 팀 담당) 날짜기반 팀 판별.
+// 발신자·별칭으로 팀을 못 가른 경우(예: 배1·배2 겸임 조효창), 제목/본문/파일명의 교육 날짜를
+// 각 후보 팀의 회차 일정과 대조해 "가장 가까운(그리고 유일하게 가까운)" 팀으로 배정한다.
+// 두 팀 회차가 같은 날이면(동률) 판별 불가 → null(미분류 유지).
+async function classifyByCoordinatorDate(
+  fromAddress: string,
+  ...texts: (string | undefined)[]
+): Promise<number | null> {
+  const addr = fromAddress.toLowerCase();
+  const teamRows = await db
+    .select({ id: schema.teams.id, c: schema.teams.coordinatorEmail })
+    .from(schema.teams);
+  const candidates = teamRows.filter((t) => t.c && t.c.toLowerCase() === addr).map((t) => t.id);
+  if (candidates.length < 2) return null; // 겸임 아니면 여기서 처리할 것 없음
+
+  const dates = parseDatesFromText(texts.filter(Boolean).join(" "));
+  if (dates.length === 0) return null;
+  const dateTs = dates.map((d) => new Date(d).getTime()).filter((t) => !isNaN(t));
+  if (dateTs.length === 0) return null;
+
+  // 후보팀별 최소 거리(일) 계산
+  const scored: { teamId: number; diffDays: number }[] = [];
+  for (const teamId of candidates) {
+    const sessions = await db
+      .select({ d: schema.sessions.scheduledDate })
+      .from(schema.sessions)
+      .where(eq(schema.sessions.teamId, teamId));
+    let best = Infinity;
+    for (const s of sessions) {
+      const sd = new Date(s.d).getTime();
+      if (isNaN(sd)) continue;
+      for (const dt of dateTs) best = Math.min(best, Math.abs(dt - sd) / 86_400_000);
+    }
+    scored.push({ teamId, diffDays: best });
+  }
+  scored.sort((a, b) => a.diffDays - b.diffDays);
+  const [first, second] = scored;
+  // 7일 이내이고, 2위보다 확실히(엄격히) 가까울 때만 채택
+  if (first && first.diffDays <= 7 && (!second || first.diffDays < second.diffDays)) {
+    return first.teamId;
+  }
+  return null;
+}
+
+// 종합 — 보낸이 → 제목/본문/파일명 별칭 → (겸임 코디면) 교육 날짜 순서로 시도
 export async function classifyTeam(opts: {
   fromAddress: string;
   subject: string;
@@ -78,7 +122,9 @@ export async function classifyTeam(opts: {
 }): Promise<number | null> {
   const byEmail = await classifyByEmail(opts.fromAddress);
   if (byEmail) return byEmail;
-  return classifyTeamByText(opts.subject, opts.body ?? "", opts.fileName ?? "");
+  const byText = await classifyTeamByText(opts.subject, opts.body ?? "", opts.fileName ?? "");
+  if (byText) return byText;
+  return classifyByCoordinatorDate(opts.fromAddress, opts.subject, opts.body, opts.fileName);
 }
 
 // ──────────────── 서류 유형 ────────────────
