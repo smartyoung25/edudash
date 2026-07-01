@@ -25,9 +25,10 @@ export default async function ExpensesOverview() {
     redirect(`/expenses/${session.teamId}`);
   }
 
-  const [teams, allExpenses] = await Promise.all([
+  const [teams, allExpenses, allBudgets] = await Promise.all([
     db.select().from(schema.teams),
     db.select().from(schema.expenses),
+    db.select().from(schema.expenseBudgets),
   ]);
 
   const totalsByTeam = new Map<number, number>();
@@ -38,6 +39,13 @@ export default async function ExpensesOverview() {
     totalsByTeam.set(e.teamId, (totalsByTeam.get(e.teamId) ?? 0) + e.totalAmount);
   }
   const grandTotal = allExpenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
+
+  // 팀별 예산 합계 (카테고리별 예산의 합) — 상세 페이지와 동일 계산
+  const budgetByTeam = new Map<number, number>();
+  for (const b of allBudgets) {
+    budgetByTeam.set(b.teamId, (budgetByTeam.get(b.teamId) ?? 0) + b.amount);
+  }
+  const grandBudget = allBudgets.reduce((s, b) => s + b.amount, 0);
 
   return (
     <div>
@@ -51,6 +59,11 @@ export default async function ExpensesOverview() {
           <div>
             <div className="text-xs text-muted-foreground">전체 집행 합계</div>
             <div className="text-2xl font-bold tabular-nums">{fmt(grandTotal)}</div>
+            {grandBudget > 0 && (
+              <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                / 전체 예산 {fmt(grandBudget)} ({Math.round((grandTotal / grandBudget) * 100)}%)
+              </div>
+            )}
           </div>
           <div className="ml-auto text-sm text-muted-foreground">{allExpenses.length}건</div>
         </Card>
@@ -59,6 +72,9 @@ export default async function ExpensesOverview() {
           {teams.map((t) => {
             const total = totalsByTeam.get(t.id) ?? 0;
             const cnt = countByTeam.get(t.id) ?? 0;
+            const budget = budgetByTeam.get(t.id) ?? 0;
+            const pct = budget > 0 ? Math.min(100, Math.round((total / budget) * 100)) : 0;
+            const over = budget > 0 && total > budget;
             return (
               <Link key={t.id} href={`/expenses/${t.id}`} className="block">
                 <Card className="p-4 hover:bg-muted/40 transition-colors">
@@ -73,6 +89,18 @@ export default async function ExpensesOverview() {
                     <div className="text-lg font-bold tabular-nums">{fmt(total)}</div>
                     <div className="text-xs text-muted-foreground">{cnt}건</div>
                   </div>
+                  {budget > 0 ? (
+                    <>
+                      <div className={cn("text-[11px] mt-1 tabular-nums", over ? "text-red-600 font-medium" : "text-muted-foreground")}>
+                        / 예산 {fmt(budget)} ({pct}%)
+                      </div>
+                      <div className="mt-1 h-1 w-full rounded-full bg-muted overflow-hidden">
+                        <div className={cn("h-full", over ? "bg-red-500" : "bg-emerald-500")} style={{ width: `${pct}%` }} />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground mt-1">예산 미설정</div>
+                  )}
                 </Card>
               </Link>
             );
