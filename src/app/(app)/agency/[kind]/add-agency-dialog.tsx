@@ -12,14 +12,22 @@ import { Plus, ScanLine, Loader2 } from "lucide-react";
 const VENDOR_TYPES = ["개인사업자", "법인사업자"] as const;
 const CARD_TYPES = ["기업카드", "기업법인카드", "NH법인카드", "개인카드"] as const;
 
-export function AddAgencyDialog({ kind, teams = [] }: { kind: "출장비" | "기타경비"; teams?: { id: number; name: string }[] }) {
+export function AddAgencyDialog({
+  kind,
+  teams = [],
+  defaultTeamId,
+}: {
+  kind: "출장비" | "기타경비";
+  teams?: { id: number; name: string }[];
+  defaultTeamId?: number;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const [tripName, setTripName] = useState("");
-  const [teamId, setTeamId] = useState<string>("none");
+  const [teamId, setTeamId] = useState<string>(defaultTeamId != null ? String(defaultTeamId) : "none");
   const [spentDate, setSpentDate] = useState(new Date().toISOString().slice(0, 10));
   const [supplyAmount, setSupplyAmount] = useState("");
   const [vatAmount, setVatAmount] = useState("");
@@ -77,7 +85,7 @@ export function AddAgencyDialog({ kind, teams = [] }: { kind: "출장비" | "기
 
   function reset() {
     setSpentDate(new Date().toISOString().slice(0, 10));
-    setTripName(""); setTeamId("none");
+    setTripName(""); setTeamId(defaultTeamId != null ? String(defaultTeamId) : "none");
     setSupplyAmount(""); setVatAmount("");
     setVendorType(""); setVendorBizNo(""); setVendorName(""); setVendorCeo("");
     setCardType(""); setCardLast4(""); setPayerName("");
