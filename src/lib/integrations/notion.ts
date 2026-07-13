@@ -9,6 +9,7 @@
 import { db, schema } from "@/db/client";
 import { eq, and } from "drizzle-orm";
 import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
+import { classifyTeamByText } from "./classifier";
 import fs from "fs";
 import path from "path";
 
@@ -166,6 +167,10 @@ export async function importTravelReceiptsFromNotion(opts?: { since?: string; tr
         const tripName = propTitle(page.properties["이름"]) || propTitle(page.properties["제목"]) || page.id;
         const tripDate = propDate(page.properties["출장일자"]) || propDate(page.properties["기안일자"]) || null;
         const drafter = propText(page.properties["기안자"]) || null;
+        // "[2026 성장농]" 같은 사업명 대괄호 접두어는 제거 후 매칭
+        // (그대로 두면 "성장농"이 감귤6기 별칭이라 전부 감귤6기로 오매칭됨)
+        const tripNameForMatch = tripName.replace(/^(\s*\[[^\]]*\]\s*)+/, "").trim();
+        const teamId = await classifyTeamByText(tripNameForMatch);
 
         const attachments = await collectAttachments(page.id);
         for (const att of attachments) {
@@ -215,6 +220,7 @@ export async function importTravelReceiptsFromNotion(opts?: { since?: string; tr
             await db.insert(schema.agencyExpenses).values({
               kind: "출장비",
               tripName,
+              teamId,
               spentDate: ocrDate || tripDate || new Date().toISOString().slice(0, 10),
               supplyAmount: supply,
               vatAmount: vat,

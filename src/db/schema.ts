@@ -232,6 +232,7 @@ export const agencyExpenses = sqliteTable("agency_expenses", {
   // 출장비 세부 분류 — 한 출장이 여러 영수증으로 쪼개진다
   subcategory: text("subcategory", { enum: ["일비", "식비", "교통비", "숙박비", "다과비", "택시비", "기타"] }),
   tripName: text("trip_name"),    // 같은 출장을 그룹핑하는 이름
+  teamId: integer("team_id").references(() => teams.id, { onDelete: "set null" }), // 출장 대상 팀(선택) — 팀별 정리용, 없으면 본사 공통 경비
   spentDate: text("spent_date").notNull(),
   supplyAmount: integer("supply_amount").notNull().default(0),
   vatAmount: integer("vat_amount").notNull().default(0),

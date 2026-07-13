@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageIcon, FileText, Save, Loader2, ImageOff, AlertTriangle, Upload } from "lucide-react";
 
 export type ReceiptStatus = "ok" | "missing" | "none";
@@ -15,18 +16,24 @@ export function AgencyReceiptViewer({
   mimeType,
   docType,
   status = "ok",
+  kind,
+  teams = [],
   initial,
 }: {
   expenseId: number;
   mimeType?: string | null;
   docType?: string | null;
   status?: ReceiptStatus;
+  kind?: "출장비" | "기타경비";
+  teams?: { id: number; name: string }[];
   initial?: {
     supplyAmount: number;
     vatAmount: number;
     totalAmount: number;
     vendorName: string | null;
     vendorBizNo: string | null;
+    tripName?: string | null;
+    teamId?: number | null;
   };
 }) {
   const router = useRouter();
@@ -40,6 +47,8 @@ export function AgencyReceiptViewer({
     totalAmount: initial?.totalAmount ?? 0,
     vendorName: initial?.vendorName ?? "",
     vendorBizNo: initial?.vendorBizNo ?? "",
+    tripName: initial?.tripName ?? "",
+    teamId: initial?.teamId != null ? String(initial.teamId) : "none",
   }));
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -91,7 +100,11 @@ export function AgencyReceiptViewer({
       const res = await fetch("/api/agency-expenses", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: expenseId, ...form }),
+        body: JSON.stringify({
+          id: expenseId,
+          ...form,
+          teamId: form.teamId === "none" ? null : Number(form.teamId),
+        }),
       });
       if (res.ok) {
         setMsg("저장됨");
@@ -159,6 +172,28 @@ export function AgencyReceiptViewer({
 
             {/* 우: 편집 폼 */}
             <div className="space-y-3">
+              {kind === "출장비" && (
+                <>
+                  <div>
+                    <Label className="text-xs">출장명</Label>
+                    <Input
+                      value={form.tripName}
+                      onChange={(e) => setForm((f) => ({ ...f, tripName: e.target.value }))}
+                      placeholder="예: 장성 딸기 3회차 교육 출장"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">팀 (배정)</Label>
+                    <Select value={form.teamId} onValueChange={(v) => setForm((f) => ({ ...f, teamId: v }))}>
+                      <SelectTrigger><SelectValue placeholder="팀 선택" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">미지정 (본사 공통)</SelectItem>
+                        {teams.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
               <div>
                 <Label className="text-xs">거래처 (상호)</Label>
                 <Input

@@ -33,9 +33,13 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
   const kind = decodeURIComponent(kindStr);
   if (!KINDS.includes(kind as any)) notFound();
 
-  const rows = await db.select().from(schema.agencyExpenses)
-    .where(eq(schema.agencyExpenses.kind, kind as "출장비" | "기타경비"))
-    .orderBy(desc(schema.agencyExpenses.spentDate), desc(schema.agencyExpenses.id));
+  const [rows, teams] = await Promise.all([
+    db.select().from(schema.agencyExpenses)
+      .where(eq(schema.agencyExpenses.kind, kind as "출장비" | "기타경비"))
+      .orderBy(desc(schema.agencyExpenses.spentDate), desc(schema.agencyExpenses.id)),
+    db.select({ id: schema.teams.id, name: schema.teams.name }).from(schema.teams).orderBy(schema.teams.id),
+  ]);
+  const teamById = new Map(teams.map((t) => [t.id, t.name] as const));
 
   const receiptStatus = await getReceiptStatusMap(rows);
 
@@ -48,24 +52,50 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
   const personalUnreimb = receiptsOnly.filter(r => r.cardType === "개인카드" && r.reimburseStatus !== "정산완료").reduce((s, e) => s + e.totalAmount, 0);
   const statementCount = rows.length - receiptsOnly.length;
 
-  // 출장비: 출장명(tripName) 기준으로 그룹핑, 그 외(기타경비)는 단일 그룹
+  // 출장비: 팀별 → (팀 안에서) 출장명(tripName)별로 그룹핑, 그 외(기타경비)는 단일 그룹
   type Row = typeof rows[number];
-  const groups: { key: string; tripName: string | null; date: string; rows: Row[]; total: number }[] = [];
+  type TripGroup = { key: string; tripName: string | null; date: string; rows: Row[]; total: number };
+  type TeamGroup = { teamId: number | null; teamName: string; total: number; count: number; trips: TripGroup[] };
+  const teamGroups: TeamGroup[] = [];
+
   if (kind === "출장비") {
-    const map = new Map<string, Row[]>();
+    const byTeam = new Map<number | null, Row[]>();
     for (const r of rows) {
-      const key = r.tripName ?? `__solo_${r.id}`;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(r);
+      const tid = r.teamId ?? null;
+      if (!byTeam.has(tid)) byTeam.set(tid, []);
+      byTeam.get(tid)!.push(r);
     }
-    for (const [key, rs] of map) {
-      const sub = rs.filter(isReceipt).reduce((s, x) => s + x.totalAmount, 0);
-      const dates = rs.map(r => r.spentDate).sort();
-      groups.push({ key, tripName: rs[0].tripName, date: dates[0], rows: rs, total: sub });
+    for (const [tid, teamRows] of byTeam) {
+      const tripMap = new Map<string, Row[]>();
+      for (const r of teamRows) {
+        const key = r.tripName ?? `__solo_${r.id}`;
+        if (!tripMap.has(key)) tripMap.set(key, []);
+        tripMap.get(key)!.push(r);
+      }
+      const trips: TripGroup[] = [];
+      for (const [key, rs] of tripMap) {
+        const sub = rs.filter(isReceipt).reduce((s, x) => s + x.totalAmount, 0);
+        const dates = rs.map((r) => r.spentDate).sort();
+        trips.push({ key, tripName: rs[0].tripName, date: dates[0], rows: rs, total: sub });
+      }
+      trips.sort((a, b) => (a.date < b.date ? 1 : -1));
+      const teamTotal = teamRows.filter(isReceipt).reduce((s, x) => s + x.totalAmount, 0);
+      teamGroups.push({
+        teamId: tid,
+        teamName: tid != null ? (teamById.get(tid) ?? `팀#${tid}`) : "미지정 (본사 공통)",
+        total: teamTotal,
+        count: teamRows.length,
+        trips,
+      });
     }
-    groups.sort((a, b) => (a.date < b.date ? 1 : -1));
+    // 팀 배정된 그룹은 이름순, 미지정은 맨 뒤
+    teamGroups.sort((a, b) => {
+      if (a.teamId == null) return 1;
+      if (b.teamId == null) return -1;
+      return a.teamName.localeCompare(b.teamName, "ko");
+    });
   } else {
-    groups.push({ key: "all", tripName: null, date: "", rows, total });
+    teamGroups.push({ teamId: null, teamName: "", total, count: rows.length, trips: [{ key: "all", tripName: null, date: "", rows, total }] });
   }
 
   return (
@@ -73,7 +103,7 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
       <PageHeader
         title={`기관경비 — ${kind}`}
         description={`영수증 ${receiptsOnly.length}건 · 합계 ${fmt(total)}원${statementCount > 0 ? ` · 거래명세표/세금계산서 ${statementCount}건(합산 제외)` : ""}`}
-        actions={<AddAgencyDialog kind={kind as "출장비" | "기타경비"} />}
+        actions={<AddAgencyDialog kind={kind as "출장비" | "기타경비"} teams={teams} />}
       />
       <div className="p-6 space-y-5">
         <Link href="/agency" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -106,8 +136,21 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
             등록된 {kind} 내역이 없습니다. 우측 상단 "{kind} 추가"로 등록하세요.
           </Card>
         ) : (
-          <div className="space-y-4">
-            {groups.map((g) => (
+          <div className="space-y-6">
+            {teamGroups.map((tg) => (
+              <div key={tg.teamId ?? "none"} className="space-y-3">
+                {kind === "출장비" && (
+                  <div className="flex items-center gap-3 px-1">
+                    <h3 className={cn("text-base font-bold", tg.teamId == null && "text-muted-foreground")}>{tg.teamName}</h3>
+                    <span className="text-sm">
+                      <span className="text-muted-foreground">합계 </span>
+                      <span className="font-bold tabular-nums text-emerald-700">{fmt(tg.total)}원</span>
+                      <span className="text-xs text-muted-foreground ml-1">({tg.count}건)</span>
+                    </span>
+                  </div>
+                )}
+                <div className="space-y-4">
+                {tg.trips.map((g) => (
               <div key={g.key} className="rounded-lg border overflow-hidden">
                 {kind === "출장비" && g.tripName && (
                   <div className="bg-emerald-50/50 px-4 py-2 border-b flex items-center gap-3">
@@ -163,12 +206,16 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
                               mimeType={e.receiptMimeType}
                               docType={e.docType}
                               status={receiptStatus.get(e.id) ?? "none"}
+                              kind={kind as "출장비" | "기타경비"}
+                              teams={teams}
                               initial={{
                                 supplyAmount: e.supplyAmount,
                                 vatAmount: e.vatAmount,
                                 totalAmount: e.totalAmount,
                                 vendorName: e.vendorName,
                                 vendorBizNo: e.vendorBizNo,
+                                tripName: e.tripName,
+                                teamId: e.teamId,
                               }}
                             />
                           </div>
@@ -220,6 +267,9 @@ export default async function AgencyKindPage({ params }: { params: Promise<{ kin
                     })}
                   </tbody>
                 </table>
+              </div>
+                ))}
+                </div>
               </div>
             ))}
           </div>

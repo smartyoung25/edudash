@@ -12,12 +12,14 @@ import { Plus, ScanLine, Loader2 } from "lucide-react";
 const VENDOR_TYPES = ["개인사업자", "법인사업자"] as const;
 const CARD_TYPES = ["기업카드", "기업법인카드", "NH법인카드", "개인카드"] as const;
 
-export function AddAgencyDialog({ kind }: { kind: "출장비" | "기타경비" }) {
+export function AddAgencyDialog({ kind, teams = [] }: { kind: "출장비" | "기타경비"; teams?: { id: number; name: string }[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const [tripName, setTripName] = useState("");
+  const [teamId, setTeamId] = useState<string>("none");
   const [spentDate, setSpentDate] = useState(new Date().toISOString().slice(0, 10));
   const [supplyAmount, setSupplyAmount] = useState("");
   const [vatAmount, setVatAmount] = useState("");
@@ -75,6 +77,7 @@ export function AddAgencyDialog({ kind }: { kind: "출장비" | "기타경비" }
 
   function reset() {
     setSpentDate(new Date().toISOString().slice(0, 10));
+    setTripName(""); setTeamId("none");
     setSupplyAmount(""); setVatAmount("");
     setVendorType(""); setVendorBizNo(""); setVendorName(""); setVendorCeo("");
     setCardType(""); setCardLast4(""); setPayerName("");
@@ -89,6 +92,10 @@ export function AddAgencyDialog({ kind }: { kind: "출장비" | "기타경비" }
       const fd = new FormData();
       fd.append("kind", kind);
       fd.append("spentDate", spentDate);
+      if (kind === "출장비") {
+        if (tripName) fd.append("tripName", tripName);
+        if (teamId !== "none") fd.append("teamId", teamId);
+      }
       fd.append("supplyAmount", String(supply));
       fd.append("vatAmount", String(vat));
       if (vendorType) fd.append("vendorType", vendorType);
@@ -150,6 +157,24 @@ export function AddAgencyDialog({ kind }: { kind: "출장비" | "기타경비" }
             <Label>사용일</Label>
             <Input type="date" value={spentDate} onChange={(e) => setSpentDate(e.target.value)} />
           </div>
+          {kind === "출장비" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>출장명</Label>
+                <Input value={tripName} onChange={(e) => setTripName(e.target.value)} placeholder="예: 장성 딸기 3회차 교육 출장" />
+              </div>
+              <div>
+                <Label>팀 (선택)</Label>
+                <Select value={teamId} onValueChange={setTeamId}>
+                  <SelectTrigger><SelectValue placeholder="팀 선택" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">미지정 (본사 공통)</SelectItem>
+                    {teams.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <div><Label>공급가액</Label><Input type="number" value={supplyAmount} onChange={(e) => setSupplyAmount(e.target.value)} placeholder="0" /></div>
             <div><Label>부가세액</Label><Input type="number" value={vatAmount} onChange={(e) => setVatAmount(e.target.value)} placeholder="0" /></div>

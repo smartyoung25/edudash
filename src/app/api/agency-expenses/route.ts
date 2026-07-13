@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     body = await req.json();
   }
 
-  const { kind, spentDate, supplyAmount, vatAmount, vendorType, vendorBizNo, vendorName, vendorCeo, cardType, cardLast4, payerName, memo } = body;
+  const { kind, spentDate, supplyAmount, vatAmount, vendorType, vendorBizNo, vendorName, vendorCeo, cardType, cardLast4, payerName, memo, tripName, teamId } = body;
   if (!kind || !KINDS.includes(kind as any)) return NextResponse.json({ error: "잘못된 분류" }, { status: 400 });
   if (!spentDate) return NextResponse.json({ error: "사용일 필수" }, { status: 400 });
 
@@ -72,6 +72,8 @@ export async function POST(req: Request) {
     cardLast4: cardLast4 || null,
     payerName: payerName || null,
     memo: memo || null,
+    tripName: tripName || null,
+    teamId: teamId ? Number(teamId) : null,
     receiptFilePath,
     receiptMimeType,
   }).returning({ id: schema.agencyExpenses.id });
@@ -82,7 +84,7 @@ const PATCHABLE = new Set([
   "spentDate", "supplyAmount", "vatAmount", "totalAmount",
   "vendorName", "vendorBizNo", "vendorCeo", "vendorType",
   "cardType", "cardLast4", "payerName",
-  "subcategory", "tripName", "docType", "memo",
+  "subcategory", "tripName", "docType", "memo", "teamId",
 ]);
 const NUMERIC = new Set(["supplyAmount", "vatAmount", "totalAmount"]);
 
@@ -95,6 +97,7 @@ export async function PATCH(req: Request) {
   const updates: Record<string, any> = {};
   for (const [k, v] of Object.entries(body)) {
     if (k === "id" || !PATCHABLE.has(k)) continue;
+    if (k === "teamId") { updates.teamId = v === "" || v == null ? null : Number(v); continue; }
     updates[k] = NUMERIC.has(k) ? (Number(v) || 0) : (v === "" ? null : v);
   }
   // 공급가/부가세 수정 시 집행액 자동 재계산 (totalAmount 명시값이 없으면)
