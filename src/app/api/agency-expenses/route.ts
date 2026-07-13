@@ -2,19 +2,13 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { requireRole } from "@/lib/auth";
-import fs from "fs";
-import path from "path";
+import { uploadDocumentToDrive } from "@/lib/integrations/drive";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const KINDS = ["출장비", "기타경비"] as const;
-const RECEIPTS_DIR = "data/receipts/agency-travel";
 
-function ensureDir(p: string) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
-function pickExt(name: string) {
-  const m = name.toLowerCase().match(/\.(pdf|png|jpe?g|bmp)$/);
-  return m ? `.${m[1]}` : ".bin";
-}
 function guessMime(name: string) {
   const lower = name.toLowerCase();
   if (lower.endsWith(".pdf")) return "application/pdf";
@@ -47,17 +41,25 @@ export async function POST(req: Request) {
   const vat = Number(vatAmount) || 0;
   const total = supply + vat;
 
+  // 영수증 파일은 로컬 디스크가 아니라 항상 Drive에 저장 (Vercel 서버리스는 파일시스템이 읽기 전용)
   let receiptFilePath: string | null = null;
   let receiptMimeType: string | null = null;
   if (file) {
-    ensureDir(RECEIPTS_DIR);
-    const ext = pickExt(file.name);
-    const safeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const rel = path.join(RECEIPTS_DIR, `${safeId}${ext}`).replace(/\\/g, "/");
     const buf = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(rel, buf);
-    receiptFilePath = rel;
-    receiptMimeType = file.type || guessMime(file.name);
+    const month = Number(String(spentDate).slice(5, 7)) || null;
+    const up = await uploadDocumentToDrive({
+      teamName: (tripName as string | undefined) || kind,
+      docType: "경비영수증",
+      month,
+      fileName: file.name || `receipt_${Date.now()}`,
+      bytes: buf,
+    });
+    if (up.ok && up.fileId) {
+      receiptFilePath = `drive:${up.fileId}`;
+      receiptMimeType = file.type || guessMime(file.name);
+    } else {
+      return NextResponse.json({ error: `영수증 업로드 실패: ${up.message}` }, { status: 500 });
+    }
   }
 
   const [row] = await db.insert(schema.agencyExpenses).values({

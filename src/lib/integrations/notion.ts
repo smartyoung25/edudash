@@ -10,10 +10,8 @@ import { db, schema } from "@/db/client";
 import { eq, and } from "drizzle-orm";
 import { ocrReceipt, isTaxiReceipt, isRideHailVendor } from "./ocr";
 import { classifyTeamByText } from "./classifier";
-import fs from "fs";
-import path from "path";
+import { uploadDocumentToDrive } from "./drive";
 
-const RECEIPTS_DIR = "data/receipts";
 const NOTION_VERSION = "2022-06-28";
 
 export function isNotionEnabled(): boolean {
@@ -103,11 +101,6 @@ async function collectAttachments(pageId: string): Promise<NotionFile[]> {
   return files;
 }
 
-function pickExt(name: string): string {
-  const m = name.toLowerCase().match(/\.(pdf|png|jpe?g|bmp)$/);
-  return m ? `.${m[1]}` : ".bin";
-}
-
 function guessMime(name: string): string {
   const lo = name.toLowerCase();
   if (lo.endsWith(".pdf")) return "application/pdf";
@@ -115,10 +108,6 @@ function guessMime(name: string): string {
   if (lo.endsWith(".jpg") || lo.endsWith(".jpeg")) return "image/jpeg";
   if (lo.endsWith(".bmp")) return "image/bmp";
   return "application/octet-stream";
-}
-
-function ensureDir(p: string) {
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
 
 function propTitle(p: any): string | null {
@@ -187,11 +176,18 @@ export async function importTravelReceiptsFromNotion(opts?: { since?: string; tr
             const buf = Buffer.from(await (await fetch(att.url)).arrayBuffer());
             const ocr = await ocrReceipt(buf, guessMime(att.name));
 
-            const subDir = "agency-travel";
-            ensureDir(path.join(RECEIPTS_DIR, subDir));
-            const safeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            const relPath = path.join(RECEIPTS_DIR, subDir, `${safeId}${pickExt(att.name)}`);
-            fs.writeFileSync(relPath, buf);
+            // 영수증 파일은 로컬 디스크가 아니라 항상 Drive에 저장 (Vercel 크론은 파일시스템이 읽기 전용)
+            const up = await uploadDocumentToDrive({
+              teamName: tripName,
+              docType: "경비영수증",
+              month: null,
+              fileName: att.name,
+              bytes: buf,
+            });
+            if (!up.ok || !up.fileId) {
+              summary.errors.push(`${page.id}/${att.name}: 영수증 업로드 실패 — ${up.message}`);
+              continue;
+            }
 
             // 택시 판정 (택시 영수증 + 호출택시 가맹점)
             const taxi = isTaxiReceipt(ocr.rawText) || isRideHailVendor(ocr.vendorName);
@@ -234,7 +230,7 @@ export async function importTravelReceiptsFromNotion(opts?: { since?: string; tr
               payerName: drafter,
               memo: null,
               dedupKey,
-              receiptFilePath: relPath.replace(/\\/g, "/"),
+              receiptFilePath: `drive:${up.fileId}`,
               receiptMimeType: guessMime(att.name),
             });
             summary.expensesCreated++;
