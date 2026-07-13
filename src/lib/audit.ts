@@ -20,7 +20,10 @@ export type AuditAction =
   | "DOC_RESOLVE"
   | "REPORT_GENERATE"
   | "SHEETS_SYNC"
-  | "MAIL_SYNC";
+  | "MAIL_SYNC"
+  | "SESSION_CREATE"
+  | "SESSION_UPDATE"
+  | "SESSION_DELETE";
 
 interface AuditParams {
   userId?: number | null;

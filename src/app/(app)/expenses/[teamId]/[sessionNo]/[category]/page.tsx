@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db, schema } from "@/db/client";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, asc } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -58,9 +58,12 @@ export default async function SessionCategoryPage({
     ? await db.select({ id: schema.teams.id, name: schema.teams.name }).from(schema.teams)
     : [];
 
+  const sessionRows = await db.select().from(schema.sessions)
+    .where(eq(schema.sessions.teamId, teamId)).orderBy(asc(schema.sessions.sessionNo));
+
   const isNoneSession = sessionNoStr === "none";
   const sessionNo = isNoneSession ? null : Number(sessionNoStr);
-  if (!isNoneSession && (!Number.isFinite(sessionNo) || (sessionNo as number) < 1 || (sessionNo as number) > teamRow.totalSessions)) {
+  if (!isNoneSession && (!Number.isFinite(sessionNo) || !sessionRows.some((s) => s.sessionNo === sessionNo))) {
     notFound();
   }
 
@@ -84,7 +87,7 @@ export default async function SessionCategoryPage({
       <PageHeader
         title={`${sessionLabel} · ${category}`}
         description={`${teamRow.name} — 영수증 ${expenses.length}건`}
-        actions={<AddExpenseDialog teamId={teamId} totalSessions={teamRow.totalSessions} />}
+        actions={<AddExpenseDialog teamId={teamId} sessions={sessionRows} />}
       />
       <div className="p-6 space-y-5">
         <div className="flex items-center gap-3 text-sm">
@@ -156,7 +159,7 @@ export default async function SessionCategoryPage({
                             expenseId={e.id}
                             teamId={teamId}
                             teams={moveTeams}
-                            totalSessions={teamRow.totalSessions}
+                            sessions={sessionRows}
                             sessionNo={e.sessionNo}
                             mimeType={e.receiptMimeType}
                             status={receiptStatus.get(e.id) ?? "none"}

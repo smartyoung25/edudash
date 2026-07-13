@@ -13,7 +13,12 @@ const CATEGORIES = ["강사비", "퍼실리테이터비용", "식대", "다과",
 const VENDOR_TYPES = ["개인사업자", "법인사업자"] as const;
 const DOC_TYPES = ["영수증", "거래명세표", "세금계산서"] as const;
 
-export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; totalSessions: number }) {
+export interface SessionOption {
+  sessionNo: number;
+  subject: string;
+}
+
+export function AddExpenseDialog({ teamId, sessions }: { teamId: number; sessions: SessionOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -217,8 +222,8 @@ export function AddExpenseDialog({ teamId, totalSessions }: { teamId: number; to
               <Select value={sessionNo} onValueChange={setSessionNo}>
                 <SelectTrigger><SelectValue placeholder="회차 선택" /></SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: totalSessions }, (_, i) => i + 1).map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n}회차</SelectItem>
+                  {sessions.map((s) => (
+                    <SelectItem key={s.sessionNo} value={String(s.sessionNo)}>{s.sessionNo}회차 · {s.subject}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

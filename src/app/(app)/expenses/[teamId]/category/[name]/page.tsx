@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db, schema } from "@/db/client";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -49,9 +49,12 @@ export default async function CategoryExpensesPage({
   const [teamRow] = await db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1);
   if (!teamRow) notFound();
 
-  const expenses = await db.select().from(schema.expenses)
-    .where(and(eq(schema.expenses.teamId, teamId), eq(schema.expenses.category, category as typeof CATEGORIES[number])))
-    .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id));
+  const [expenses, sessionRows] = await Promise.all([
+    db.select().from(schema.expenses)
+      .where(and(eq(schema.expenses.teamId, teamId), eq(schema.expenses.category, category as typeof CATEGORIES[number])))
+      .orderBy(desc(schema.expenses.spentDate), desc(schema.expenses.id)),
+    db.select().from(schema.sessions).where(eq(schema.sessions.teamId, teamId)).orderBy(asc(schema.sessions.sessionNo)),
+  ]);
 
   const total = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.totalAmount : s), 0);
   const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
@@ -71,10 +74,9 @@ export default async function CategoryExpensesPage({
       noSessionCount += 1;
     }
   }
-  const allSessionCards = Array.from({ length: teamRow.totalSessions }, (_, i) => {
-    const no = i + 1;
-    const entry = bySession.get(no) ?? { total: 0, count: 0 };
-    return { no, total: entry.total, count: entry.count };
+  const allSessionCards = sessionRows.map((s) => {
+    const entry = bySession.get(s.sessionNo) ?? { total: 0, count: 0 };
+    return { no: s.sessionNo, subject: s.subject, total: entry.total, count: entry.count };
   });
 
   return (
@@ -82,7 +84,7 @@ export default async function CategoryExpensesPage({
       <PageHeader
         title={`${category} 사용내역`}
         description={`${teamRow.name} — ${category} 회차별 사용금액`}
-        actions={<AddExpenseDialog teamId={teamId} totalSessions={teamRow.totalSessions} />}
+        actions={<AddExpenseDialog teamId={teamId} sessions={sessionRows} />}
       />
       <div className="p-6 space-y-5">
         <Link href={`/expenses/${teamId}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -115,7 +117,7 @@ export default async function CategoryExpensesPage({
         <div>
           <h3 className="text-sm font-semibold mb-2">{category} — 회차별 사용금액 <span className="text-xs text-muted-foreground font-normal">(회차를 클릭하면 영수증 내역이 표시됩니다)</span></h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-            {allSessionCards.map(({ no, total: t, count }) => {
+            {allSessionCards.map(({ no, subject, total: t, count }) => {
               const hasData = count > 0;
               return (
                 <Link key={no} href={`/expenses/${teamId}/${no}/${encodeURIComponent(category)}`} className="block">
@@ -124,6 +126,7 @@ export default async function CategoryExpensesPage({
                       <span className="text-xs font-medium text-muted-foreground">{no}회차</span>
                       <ChevronRight className="h-3 w-3 text-muted-foreground" />
                     </div>
+                    <div className="text-[10px] text-muted-foreground truncate" title={subject}>{subject}</div>
                     <div className={cn("text-base font-bold tabular-nums", hasData ? "" : "text-muted-foreground")}>{fmt(t)}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">{hasData ? `${count}건` : "없음"}</div>
                   </Card>

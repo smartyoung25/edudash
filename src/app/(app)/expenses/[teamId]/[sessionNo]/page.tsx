@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db, schema } from "@/db/client";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, asc } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,9 +55,13 @@ export default async function SessionExpensesPage({
     ? await db.select({ id: schema.teams.id, name: schema.teams.name }).from(schema.teams)
     : [];
 
+  const sessionRows = await db.select().from(schema.sessions)
+    .where(eq(schema.sessions.teamId, teamId)).orderBy(asc(schema.sessions.sessionNo));
+
   const isNoneSession = sessionNoStr === "none";
   const sessionNo = isNoneSession ? null : Number(sessionNoStr);
-  if (!isNoneSession && (!Number.isFinite(sessionNo) || (sessionNo as number) < 1 || (sessionNo as number) > teamRow.totalSessions)) {
+  const sessionRow = isNoneSession ? null : sessionRows.find((s) => s.sessionNo === sessionNo);
+  if (!isNoneSession && (!Number.isFinite(sessionNo) || !sessionRow)) {
     notFound();
   }
 
@@ -84,13 +88,14 @@ export default async function SessionExpensesPage({
   }
 
   const sessionLabel = isNoneSession ? "회차 미지정" : `${sessionNo}회차`;
+  const sessionTitle = sessionRow ? `${sessionLabel} · ${sessionRow.subject}` : sessionLabel;
 
   return (
     <div>
       <PageHeader
-        title={`${sessionLabel} 영수증`}
+        title={`${sessionTitle} 영수증`}
         description={`${teamRow.name} — ${sessionLabel} 지출 내역`}
-        actions={<AddExpenseDialog teamId={teamId} totalSessions={teamRow.totalSessions} />}
+        actions={<AddExpenseDialog teamId={teamId} sessions={sessionRows} />}
       />
       <div className="p-6 space-y-5">
         <Link href={`/expenses/${teamId}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -178,7 +183,7 @@ export default async function SessionExpensesPage({
                             expenseId={e.id}
                             teamId={teamId}
                             teams={moveTeams}
-                            totalSessions={teamRow.totalSessions}
+                            sessions={sessionRows}
                             sessionNo={e.sessionNo}
                             mimeType={e.receiptMimeType}
                             status={receiptStatus.get(e.id) ?? "none"}

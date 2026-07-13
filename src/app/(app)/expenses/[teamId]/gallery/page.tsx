@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db, schema } from "@/db/client";
-import { eq, desc, isNotNull, and } from "drizzle-orm";
+import { eq, desc, isNotNull, and, asc } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,9 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
   const moveTeams = session.role === "admin"
     ? await db.select({ id: schema.teams.id, name: schema.teams.name }).from(schema.teams)
     : [];
+
+  const sessionRows = await db.select().from(schema.sessions)
+    .where(eq(schema.sessions.teamId, teamId)).orderBy(asc(schema.sessions.sessionNo));
 
   const expenses = await db.select().from(schema.expenses)
     .where(and(eq(schema.expenses.teamId, teamId), isNotNull(schema.expenses.receiptFilePath)))
@@ -144,7 +147,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ teamId
                     expenseId={e.id}
                     teamId={teamId}
                     teams={moveTeams}
-                    totalSessions={teamRow.totalSessions}
+                    sessions={sessionRows}
                     sessionNo={e.sessionNo}
                     mimeType={e.receiptMimeType}
                     triggerLabel="크게 보기"

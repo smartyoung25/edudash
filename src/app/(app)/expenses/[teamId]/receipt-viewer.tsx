@@ -13,6 +13,11 @@ import { classifyExpense } from "@/lib/integrations/expense-classifier";
 
 export type ReceiptStatus = "ok" | "missing" | "none";
 
+export interface SessionOption {
+  sessionNo: number;
+  subject: string;
+}
+
 const CATEGORIES = ["강사비", "퍼실리테이터비용", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
 const DOC_TYPES = ["영수증", "거래명세표", "세금계산서"] as const;
 
@@ -37,7 +42,7 @@ export function ReceiptViewer({
   initial,
   editable = true,
   status = "ok",
-  totalSessions = 0,
+  sessions = [],
   sessionNo = null,
   teamId,
   teams = [],
@@ -48,7 +53,7 @@ export function ReceiptViewer({
   initial?: ReceiptViewerInitial;
   editable?: boolean;
   status?: ReceiptStatus;
-  totalSessions?: number;
+  sessions?: SessionOption[];
   sessionNo?: number | null;
   teamId?: number;
   teams?: { id: number; name: string }[];
@@ -251,8 +256,8 @@ export function ReceiptViewer({
                     <SelectTrigger><SelectValue placeholder="회차 선택" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">미지정</SelectItem>
-                      {Array.from({ length: totalSessions }, (_, i) => i + 1).map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n}회차</SelectItem>
+                      {sessions.map((s) => (
+                        <SelectItem key={s.sessionNo} value={String(s.sessionNo)}>{s.sessionNo}회차 · {s.subject}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

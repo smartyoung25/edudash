@@ -5,10 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { CheckCircle2, Circle, Loader2, Users } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
+import { requireAuth } from "@/lib/auth";
+import { canManageSessions } from "@/lib/permissions";
+import { SessionManager } from "./session-manager";
 
 export default async function ScheduleTab({ params }: { params: Promise<{ teamId: string }> }) {
+  const session = await requireAuth();
   const { teamId } = await params;
   const tid = Number(teamId);
+  const canEdit = canManageSessions(session.role!);
 
   const [sessions, reports] = await Promise.all([
     db
@@ -52,16 +57,20 @@ export default async function ScheduleTab({ params }: { params: Promise<{ teamId
 
   if (total === 0) {
     return (
-      <Card className="p-6">
-        <h2 className="text-lg font-semibold mb-2">교육 일정</h2>
-        <p className="text-sm text-muted-foreground">
-          아직 교육 일정이 등록되지 않았습니다. 운영계획서 PDF 기반 차시 시드 작업이 필요합니다.
-        </p>
-      </Card>
+      <div>
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold mb-2">교육 일정</h2>
+          <p className="text-sm text-muted-foreground">
+            아직 교육 일정이 등록되지 않았습니다{canEdit ? " — 아래에서 회차를 추가하세요." : "."}
+          </p>
+        </Card>
+        {canEdit && <SessionManager teamId={tid} sessions={sessions} />}
+      </div>
     );
   }
 
   return (
+    <div>
     <Card className="p-6">
       <div className="mb-6">
         <div className="flex items-baseline justify-between mb-2">
@@ -142,5 +151,7 @@ export default async function ScheduleTab({ params }: { params: Promise<{ teamId
         })}
       </ol>
     </Card>
+    {canEdit && <SessionManager teamId={tid} sessions={sessions} />}
+    </div>
   );
 }

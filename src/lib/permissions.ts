@@ -47,3 +47,8 @@ export function canGenerateReport(role: Role): boolean {
 export function canManageSurvey(role: Role): boolean {
   return role === "admin";
 }
+
+// 교육일정 회차 추가·수정·삭제 가능 여부 (KPI·정산 등 파급효과가 커서 관리자 전용)
+export function canManageSessions(role: Role): boolean {
+  return role === "admin";
+}

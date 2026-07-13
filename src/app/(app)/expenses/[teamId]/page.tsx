@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db, schema } from "@/db/client";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,9 +45,10 @@ export default async function TeamExpensesPage({ params }: { params: Promise<{ t
   const [teamRow] = await db.select().from(schema.teams).where(eq(schema.teams.id, teamId)).limit(1);
   if (!teamRow) notFound();
 
-  const [expenses, budgetRows] = await Promise.all([
+  const [expenses, budgetRows, sessionRows] = await Promise.all([
     db.select().from(schema.expenses).where(eq(schema.expenses.teamId, teamId)),
     db.select().from(schema.expenseBudgets).where(eq(schema.expenseBudgets.teamId, teamId)),
+    db.select().from(schema.sessions).where(eq(schema.sessions.teamId, teamId)).orderBy(asc(schema.sessions.sessionNo)),
   ]);
 
   // 카테고리별 합계 (거래명세표/세금계산서 제외)
@@ -68,6 +69,25 @@ export default async function TeamExpensesPage({ params }: { params: Promise<{ t
   const totalSupply = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.supplyAmount : s), 0);
   const totalVat = expenses.reduce((s, e) => (countsTowardTotal(e) ? s + e.vatAmount : s), 0);
 
+  // 회차별 사용금액 — 교육일정(sessions)에 등록된 회차를 전부 기준으로 삼는다
+  const bySession = new Map<number, { total: number; count: number }>();
+  let noSessionTotal = 0;
+  let noSessionCount = 0;
+  for (const e of expenses) {
+    const amt = countsTowardTotal(e) ? e.totalAmount : 0;
+    if (e.sessionNo) {
+      const cur = bySession.get(e.sessionNo) ?? { total: 0, count: 0 };
+      bySession.set(e.sessionNo, { total: cur.total + amt, count: cur.count + 1 });
+    } else {
+      noSessionTotal += amt;
+      noSessionCount += 1;
+    }
+  }
+  const sessionCards = sessionRows.map((s) => {
+    const entry = bySession.get(s.sessionNo) ?? { total: 0, count: 0 };
+    return { sessionNo: s.sessionNo, subject: s.subject, scheduledDate: s.scheduledDate, ...entry };
+  });
+
   return (
     <div>
       <PageHeader
@@ -79,7 +99,7 @@ export default async function TeamExpensesPage({ params }: { params: Promise<{ t
               <Button size="sm" variant="outline"><Images className="h-4 w-4 mr-1" />영수증 갤러리</Button>
             </Link>
             <BudgetDialog teamId={teamId} currentBudgets={budgetByCat} />
-            <AddExpenseDialog teamId={teamId} totalSessions={teamRow.totalSessions} />
+            <AddExpenseDialog teamId={teamId} sessions={sessionRows} />
           </div>
         }
       />
@@ -150,6 +170,47 @@ export default async function TeamExpensesPage({ params }: { params: Promise<{ t
               );
             })}
           </div>
+        </div>
+
+        {/* 회차별 사용금액 — 교육일정에 등록된 회차를 전부 표시 */}
+        <div>
+          <h3 className="text-sm font-semibold mb-2">회차별 사용금액 <span className="text-xs text-muted-foreground font-normal">(교육일정 기준 · 카드를 클릭하면 회차 상세로 이동)</span></h3>
+          {sessionCards.length === 0 ? (
+            <Card className="p-4 text-sm text-muted-foreground">
+              등록된 교육 회차가 없습니다. <Link href={`/teams/${teamId}/schedule`} className="underline">교육일정</Link>에서 회차를 먼저 등록하세요.
+            </Card>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+              {sessionCards.map((s) => {
+                const hasData = s.count > 0;
+                return (
+                  <Link key={s.sessionNo} href={`/expenses/${teamId}/${s.sessionNo}`} className="block">
+                    <Card className={cn("p-3 hover:bg-muted/40 transition-colors cursor-pointer", hasData ? "" : "opacity-60")}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-muted-foreground">{s.sessionNo}회차</span>
+                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                      <div className="text-[11px] text-muted-foreground truncate" title={s.subject}>{s.subject}</div>
+                      <div className={cn("text-base font-bold tabular-nums mt-0.5", hasData ? "" : "text-muted-foreground")}>{fmt(s.total)}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">{hasData ? `${s.count}건` : "없음"}</div>
+                    </Card>
+                  </Link>
+                );
+              })}
+              {noSessionCount > 0 && (
+                <Link href={`/expenses/${teamId}/none`} className="block">
+                  <Card className="p-3 border-dashed hover:bg-muted/40 transition-colors cursor-pointer">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-muted-foreground">회차 미지정</span>
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                    <div className="text-base font-bold tabular-nums">{fmt(noSessionTotal)}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{noSessionCount}건</div>
+                  </Card>
+                </Link>
+              )}
+            </div>
+          )}
         </div>
 
       </div>
