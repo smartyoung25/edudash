@@ -93,41 +93,47 @@ export function TripTable({
                 </td>
                 <td className="px-3 py-2 tabular-nums text-xs">{isPerDiem ? <span className="text-muted-foreground">—</span> : (e.vendorBizNo || "-")}</td>
                 <td className="px-3 py-2 text-xs">
-                  {isPerDiem ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 text-slate-700 border-slate-200">계좌이체</span>
-                  ) : (!e.docType || e.docType === "영수증") ? (
-                    <>
-                      {e.cardType === "기업카드" && <span className="text-muted-foreground">-</span>}
-                      {e.cardType === "기업법인카드" && (
-                        <div className="inline-flex items-center gap-1 flex-wrap">
+                  <div className="inline-flex items-center gap-1 flex-wrap">
+                    {isPerDiem ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 text-slate-700 border-slate-200">계좌이체</span>
+                    ) : (!e.docType || e.docType === "영수증") ? (
+                      <>
+                        {e.cardType === "기업카드" && (
+                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium",
+                            e.reimburseStatus === "정산완료" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-700 border-slate-200")}>
+                            기업카드{e.reimburseStatus === "정산완료" ? " · 정산✓" : " · 정산필요"}
+                          </span>
+                        )}
+                        {e.cardType === "기업법인카드" && (
                           <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium",
                             e.reimburseStatus === "정산완료" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-cyan-50 text-cyan-700 border-cyan-200")}>
                             기업법인카드{e.cardLast4 ? ` ****${e.cardLast4}` : ""}{e.reimburseStatus === "정산완료" ? " · 정산✓" : " · 정산필요"}
                           </span>
-                          <ReimburseButton id={e.id} apiPath="agency-expenses" status={e.reimburseStatus} note={e.reimburseNote} />
-                        </div>
-                      )}
-                      {e.cardType === "NH법인카드" && (
-                        <div className="inline-flex items-center gap-1 flex-wrap">
+                        )}
+                        {e.cardType === "NH법인카드" && (
                           <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium",
                             e.reimburseStatus === "정산완료" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-green-50 text-green-700 border-green-200")}>
                             NH법인카드{e.cardLast4 ? ` ****${e.cardLast4}` : ""}{e.reimburseStatus === "정산완료" ? " · 정산✓" : " · 정산필요"}
                           </span>
-                          <ReimburseButton id={e.id} apiPath="agency-expenses" status={e.reimburseStatus} note={e.reimburseNote} />
-                        </div>
-                      )}
-                      {e.cardType === "개인카드" && (
-                        <div className="inline-flex items-center gap-1 flex-wrap">
+                        )}
+                        {e.cardType === "개인카드" && (
                           <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium",
                             e.reimburseStatus === "정산완료" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-orange-50 text-orange-700 border-orange-200")}>
                             개인카드 {e.payerName ?? ""}{e.reimburseStatus === "정산완료" ? " · 정산✓" : " · 정산필요"}
                           </span>
-                          <ReimburseButton id={e.id} apiPath="agency-expenses" status={e.reimburseStatus} note={e.reimburseNote} />
-                        </div>
-                      )}
-                      {!e.cardType && <span className="text-muted-foreground">-</span>}
-                    </>
-                  ) : <span className="text-muted-foreground">-</span>}
+                        )}
+                        {!e.cardType && (
+                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium",
+                            e.reimburseStatus === "정산완료" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-700 border-slate-200")}>
+                            미지정{e.reimburseStatus === "정산완료" ? " · 정산✓" : " · 정산필요"}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 text-slate-700 border-slate-200">{e.docType}</span>
+                    )}
+                    <ReimburseButton id={e.id} apiPath="agency-expenses" status={e.reimburseStatus} note={e.reimburseNote} />
+                  </div>
                 </td>
                 <td className={cn("px-3 py-2 tabular-nums text-right", isPerDiem && "text-muted-foreground")}>{isPerDiem ? "—" : fmt(e.supplyAmount)}</td>
                 <td className={cn("px-3 py-2 tabular-nums text-right", isPerDiem && "text-muted-foreground")}>{isPerDiem ? "—" : fmt(e.vatAmount)}</td>
