@@ -78,6 +78,7 @@ export function TripTable({
                       kind={kind}
                       teams={teams}
                       initial={{
+                        spentDate: e.spentDate,
                         supplyAmount: e.supplyAmount,
                         vatAmount: e.vatAmount,
                         totalAmount: e.totalAmount,

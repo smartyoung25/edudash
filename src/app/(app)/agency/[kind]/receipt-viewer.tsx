@@ -27,6 +27,7 @@ export function AgencyReceiptViewer({
   kind?: "출장비" | "기타경비";
   teams?: { id: number; name: string }[];
   initial?: {
+    spentDate: string;
     supplyAmount: number;
     vatAmount: number;
     totalAmount: number;
@@ -42,6 +43,7 @@ export function AgencyReceiptViewer({
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [form, setForm] = useState(() => ({
+    spentDate: initial?.spentDate ?? "",
     supplyAmount: initial?.supplyAmount ?? 0,
     vatAmount: initial?.vatAmount ?? 0,
     totalAmount: initial?.totalAmount ?? 0,
@@ -96,6 +98,10 @@ export function AgencyReceiptViewer({
 
   async function save() {
     setMsg(null);
+    if (!form.spentDate) {
+      setMsg("사용일을 입력해주세요");
+      return;
+    }
     start(async () => {
       const res = await fetch("/api/agency-expenses", {
         method: "PATCH",
@@ -172,6 +178,14 @@ export function AgencyReceiptViewer({
 
             {/* 우: 편집 폼 */}
             <div className="space-y-3">
+              <div>
+                <Label className="text-xs">사용일</Label>
+                <Input
+                  type="date"
+                  value={form.spentDate}
+                  onChange={(e) => setForm((f) => ({ ...f, spentDate: e.target.value }))}
+                />
+              </div>
               {kind === "출장비" && (
                 <>
                   <div>
