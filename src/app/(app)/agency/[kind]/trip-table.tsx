@@ -86,6 +86,7 @@ export function TripTable({
                         vendorBizNo: e.vendorBizNo,
                         tripName: e.tripName,
                         teamId: e.teamId,
+                        memo: e.memo,
                       }}
                     />
                   </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageIcon, FileText, Save, Loader2, ImageOff, AlertTriangle, Upload } from "lucide-react";
@@ -35,6 +36,7 @@ export function AgencyReceiptViewer({
     vendorBizNo: string | null;
     tripName?: string | null;
     teamId?: number | null;
+    memo?: string | null;
   };
 }) {
   const router = useRouter();
@@ -51,6 +53,7 @@ export function AgencyReceiptViewer({
     vendorBizNo: initial?.vendorBizNo ?? "",
     tripName: initial?.tripName ?? "",
     teamId: initial?.teamId != null ? String(initial.teamId) : "none",
+    memo: initial?.memo ?? "",
   }));
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -266,6 +269,16 @@ export function AgencyReceiptViewer({
                 <span className="font-semibold tabular-nums text-foreground">
                   {form.supplyAmount.toLocaleString("ko-KR")} + {form.vatAmount.toLocaleString("ko-KR")} = {form.totalAmount.toLocaleString("ko-KR")}원
                 </span>
+              </div>
+
+              <div>
+                <Label className="text-xs">메모 (지출 사유)</Label>
+                <Textarea
+                  value={form.memo}
+                  onChange={(e) => setForm((f) => ({ ...f, memo: e.target.value }))}
+                  placeholder="예: 3회차 교육 강사 식대"
+                  rows={2}
+                />
               </div>
 
               <div className="flex items-center gap-2 pt-2">
