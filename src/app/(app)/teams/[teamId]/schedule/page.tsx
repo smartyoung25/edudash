@@ -1,13 +1,10 @@
 import { db, schema } from "@/db/client";
 import { eq, asc } from "drizzle-orm";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, Circle, Loader2, Users } from "lucide-react";
-import { cn, formatDate } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth";
 import { canManageSessions } from "@/lib/permissions";
-import { SessionManager } from "./session-manager";
+import { ScheduleTimeline } from "./schedule-timeline";
 
 export default async function ScheduleTab({ params }: { params: Promise<{ teamId: string }> }) {
   const session = await requireAuth();
@@ -60,11 +57,11 @@ export default async function ScheduleTab({ params }: { params: Promise<{ teamId
       <div>
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-2">교육 일정</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mb-4">
             아직 교육 일정이 등록되지 않았습니다{canEdit ? " — 아래에서 회차를 추가하세요." : "."}
           </p>
+          <ScheduleTimeline teamId={tid} rows={rows} canEdit={canEdit} />
         </Card>
-        {canEdit && <SessionManager teamId={tid} sessions={sessions} />}
       </div>
     );
   }
@@ -89,69 +86,8 @@ export default async function ScheduleTab({ params }: { params: Promise<{ teamId
         </div>
       </div>
 
-      <ol className="relative border-l-2 border-muted ml-4 space-y-6">
-        {rows.map((r) => {
-          const { rep, state, displayNo } = r;
-          return (
-            <li key={r.id} className="ml-6">
-              <span
-                className={cn(
-                  "absolute -left-[13px] flex items-center justify-center w-6 h-6 rounded-full ring-4 ring-background",
-                  state === "done" && "bg-emerald-500 text-white",
-                  state === "today" && "bg-amber-500 text-white animate-pulse",
-                  state === "past" && "bg-rose-500/80 text-white",
-                  state === "planned" && "bg-background border-2 border-muted-foreground/30",
-                )}
-              >
-                {state === "done" && <CheckCircle2 className="h-4 w-4" />}
-                {state === "today" && <Loader2 className="h-3 w-3 animate-spin" />}
-                {state !== "done" && state !== "today" && <Circle className="h-2 w-2 text-transparent" />}
-              </span>
-
-              <div className="flex items-center gap-3 flex-wrap">
-                {displayNo !== null ? (
-                  <Badge variant="outline" className="font-mono">{displayNo}차시</Badge>
-                ) : (
-                  <Badge variant="outline" className="font-mono opacity-60 line-through">PDF {r.sessionNo}차시</Badge>
-                )}
-                <span className={cn("font-medium", state === "past" && "text-muted-foreground line-through")}>{r.subject}</span>
-                {state === "done" && <Badge variant="success">완료</Badge>}
-                {state === "today" && <Badge variant="warning">오늘 예정</Badge>}
-                {state === "past" && <Badge variant="destructive">취소(미진행)</Badge>}
-                {state === "planned" && <Badge variant="muted">예정</Badge>}
-              </div>
-
-              <div className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
-                {rep ? (
-                  rep.reportDate !== r.scheduledDate ? (
-                    <>
-                      <span className="font-medium text-foreground">{formatDate(rep.reportDate)}</span>
-                      <span className="text-xs line-through opacity-60">예정 {formatDate(r.scheduledDate)}</span>
-                      <Badge variant="info" className="text-[10px] py-0">일정 변경</Badge>
-                    </>
-                  ) : (
-                    <span>{formatDate(rep.reportDate)}</span>
-                  )
-                ) : (
-                  <span>{formatDate(r.scheduledDate)}</span>
-                )}
-              </div>
-
-              {rep && (
-                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground bg-muted/40 rounded px-3 py-1.5">
-                  <Users className="h-3 w-3" />
-                  <span>출석 {rep.attended}명 / 불참 {rep.absent}명</span>
-                  {rep.absentNames && <span>· 불참자: {rep.absentNames}</span>}
-                  {rep.absentReason && <span>· {rep.absentReason}</span>}
-                  <span className="ml-auto">{rep.source === "sheet" ? "시트 자동" : "수동"}</span>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      <ScheduleTimeline teamId={tid} rows={rows} canEdit={canEdit} />
     </Card>
-    {canEdit && <SessionManager teamId={tid} sessions={sessions} />}
     </div>
   );
 }
