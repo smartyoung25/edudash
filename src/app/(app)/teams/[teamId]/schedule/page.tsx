@@ -38,7 +38,7 @@ export default async function ScheduleTab({ params }: { params: Promise<{ teamId
   let counter = 1;
   const rows: Row[] = sessions.map((s) => {
     const rep = reportByNo.get(s.sessionNo);
-    const isDone = !!rep;
+    const isDone = !!rep || s.status === "done";
     const isToday = !isDone && s.scheduledDate === today;
     const isPast = !isDone && !isToday && s.scheduledDate < today;
     const state: Row["state"] = isDone ? "done" : isToday ? "today" : isPast ? "past" : "planned";

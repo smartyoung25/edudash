@@ -31,7 +31,7 @@ function computeProgress(
   const reportNos = new Set(reports.map((r) => r.sessionNo));
   let done = 0, cancelled = 0, planned = 0;
   for (const s of sessions) {
-    if (reportNos.has(s.sessionNo)) done++;
+    if (reportNos.has(s.sessionNo) || s.status === "done") done++;
     else if (s.scheduledDate < today) cancelled++;
     else planned++;
   }
