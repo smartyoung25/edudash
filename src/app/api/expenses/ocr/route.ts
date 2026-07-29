@@ -6,6 +6,9 @@ import { requireAuth } from "@/lib/auth";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// Vercel 서버리스 body 한도(~4.5MB)를 고려한 안전 상한
+const MAX_SIZE = 4 * 1024 * 1024;
+
 export async function POST(req: Request) {
   await requireAuth();
   if (!isOcrEnabled()) {
@@ -15,6 +18,9 @@ export async function POST(req: Request) {
   const form = await req.formData();
   const file = form.get("file") as File | null;
   if (!file) return NextResponse.json({ error: "파일이 없습니다" }, { status: 400 });
+  if (file.size > MAX_SIZE) {
+    return NextResponse.json({ error: "파일이 너무 큽니다(최대 4MB). 사진 용량을 줄여 다시 첨부해주세요" }, { status: 413 });
+  }
 
   const buf = Buffer.from(await file.arrayBuffer());
   const mime = file.type || undefined;

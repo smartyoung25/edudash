@@ -12,6 +12,8 @@ import { Plus, ScanLine, Loader2 } from "lucide-react";
 const CATEGORIES = ["강사비", "퍼실리테이터비용", "식대", "다과", "재료비", "숙박", "임차비", "출장비", "기타"] as const;
 const VENDOR_TYPES = ["개인사업자", "법인사업자"] as const;
 const DOC_TYPES = ["영수증", "거래명세표", "세금계산서"] as const;
+// Vercel 서버리스 body 한도(~4.5MB)를 고려한 안전 상한 — 서버(/api/expenses, /api/expenses/ocr)와 동일한 값
+const MAX_SIZE = 4 * 1024 * 1024;
 
 export interface SessionOption {
   sessionNo: number;
@@ -45,12 +47,17 @@ export function AddExpenseDialog({ teamId, sessions }: { teamId: number; session
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    // 업로드한 파일은 영수증으로 첨부(저장)됨 — OCR 자동입력은 보조 기능
-    setReceiptFile(file);
-    setOcrLoading(true);
     setError(null);
     setOcrNote(null);
     setOcrRawText(null);
+    if (file.size > MAX_SIZE) {
+      // 서버(저장/OCR) 모두 이 크기를 넘으면 실패하므로, 첨부 전에 바로 안내하고 첨부하지 않음
+      setOcrNote("파일이 너무 큽니다(최대 4MB). 사진 용량을 줄여 다시 첨부해주세요.");
+      return;
+    }
+    // 업로드한 파일은 영수증으로 첨부(저장)됨 — OCR 자동입력은 보조 기능
+    setReceiptFile(file);
+    setOcrLoading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -70,6 +77,10 @@ export function AddExpenseDialog({ teamId, sessions }: { teamId: number; session
       if (p.supplyAmount) setSupplyAmount(String(p.supplyAmount));
       if (p.vatAmount) setVatAmount(String(p.vatAmount));
       if (p.rawText) setOcrRawText(p.rawText);
+      // OCR이 양식을 인식했으면(예: 강사비 수당지급확인서) 카테고리 자동 반영 — 사용자가 이미 고른 값은 덮어쓰지 않음
+      if (!category && data.classification?.category && data.classification.confidence >= 0.65) {
+        setCategory(data.classification.category);
+      }
     } catch {
       setOcrNote("자동입력은 실패했지만 영수증은 첨부됩니다. 항목을 직접 입력해 주세요.");
     } finally {
@@ -121,47 +132,51 @@ export function AddExpenseDialog({ teamId, sessions }: { teamId: number; session
     if (!spentDate) return setError("사용일을 입력해주세요");
 
     startTransition(async () => {
-      let res: Response;
-      if (receiptFile) {
-        // 영수증 파일 첨부 → multipart 전송 (서버가 Drive 업로드)
-        const fd = new FormData();
-        fd.append("receipt", receiptFile);
-        fd.append("teamId", String(teamId));
-        fd.append("spentDate", spentDate);
-        if (sessionNo) fd.append("sessionNo", sessionNo);
-        fd.append("category", category);
-        fd.append("supplyAmount", String(supply));
-        fd.append("vatAmount", String(vat));
-        if (vendorType) fd.append("vendorType", vendorType);
-        fd.append("vendorBizNo", vendorBizNo);
-        fd.append("vendorName", vendorName);
-        fd.append("vendorCeo", vendorCeo);
-        fd.append("memo", memo);
-        fd.append("docType", docType);
-        res = await fetch("/api/expenses", { method: "POST", body: fd });
-      } else {
-        res = await fetch("/api/expenses", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            teamId, spentDate, sessionNo: sessionNo || null, category,
-            supplyAmount: supply, vatAmount: vat,
-            vendorType: vendorType || null,
-            vendorBizNo, vendorName, vendorCeo, memo, docType,
-          }),
-        });
-      }
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setError(d.error || "저장 실패");
-        return;
-      }
-      router.refresh();
-      if (continueAdding) {
-        partialReset(); // 회차·사용일·카테고리 유지 → 다음 강사 바로 입력
-      } else {
-        reset();
-        setOpen(false);
+      try {
+        let res: Response;
+        if (receiptFile) {
+          // 영수증 파일 첨부 → multipart 전송 (서버가 Drive 업로드)
+          const fd = new FormData();
+          fd.append("receipt", receiptFile);
+          fd.append("teamId", String(teamId));
+          fd.append("spentDate", spentDate);
+          if (sessionNo) fd.append("sessionNo", sessionNo);
+          fd.append("category", category);
+          fd.append("supplyAmount", String(supply));
+          fd.append("vatAmount", String(vat));
+          if (vendorType) fd.append("vendorType", vendorType);
+          fd.append("vendorBizNo", vendorBizNo);
+          fd.append("vendorName", vendorName);
+          fd.append("vendorCeo", vendorCeo);
+          fd.append("memo", memo);
+          fd.append("docType", docType);
+          res = await fetch("/api/expenses", { method: "POST", body: fd });
+        } else {
+          res = await fetch("/api/expenses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              teamId, spentDate, sessionNo: sessionNo || null, category,
+              supplyAmount: supply, vatAmount: vat,
+              vendorType: vendorType || null,
+              vendorBizNo, vendorName, vendorCeo, memo, docType,
+            }),
+          });
+        }
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setError(d.error || "저장 실패");
+          return;
+        }
+        router.refresh();
+        if (continueAdding) {
+          partialReset(); // 회차·사용일·카테고리 유지 → 다음 강사 바로 입력
+        } else {
+          reset();
+          setOpen(false);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "저장 실패");
       }
     });
   }

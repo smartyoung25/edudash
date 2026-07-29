@@ -9,6 +9,9 @@ import { uploadDocumentToDrive } from "@/lib/integrations/drive";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// Vercel 서버리스 body 한도(~4.5MB)를 고려한 안전 상한
+const MAX_SIZE = 4 * 1024 * 1024;
+
 export async function POST(req: Request) {
   const session = await requireAuth();
 
@@ -55,6 +58,9 @@ export async function POST(req: Request) {
   let receiptFilePath: string | null = null;
   let receiptMimeType: string | null = null;
   if (file) {
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json({ error: "영수증 파일이 너무 큽니다(최대 4MB). 사진 용량을 줄여 다시 첨부해주세요" }, { status: 413 });
+    }
     const buf = Buffer.from(await file.arrayBuffer());
     const teamRow = (await db.select({ name: schema.teams.name }).from(schema.teams).where(eq(schema.teams.id, Number(teamId))).limit(1))[0];
     const month = Number(String(spentDate).slice(5, 7)) || null;
