@@ -48,9 +48,8 @@ export default async function ScheduleTab({ params }: { params: Promise<{ teamId
 
   const doneCount = rows.filter((r) => r.state === "done").length;
   const cancelCount = rows.filter((r) => r.state === "past").length;
-  const effectiveTotal = sessions.length - cancelCount;
   const total = sessions.length;
-  const progressPct = effectiveTotal === 0 ? 0 : Math.round((doneCount / effectiveTotal) * 100);
+  const progressPct = total === 0 ? 0 : Math.round((doneCount / total) * 100);
 
   if (total === 0) {
     return (
@@ -74,9 +73,9 @@ export default async function ScheduleTab({ params }: { params: Promise<{ teamId
           <h2 className="text-lg font-semibold">교육 일정</h2>
           <div className="text-sm">
             <span className="text-2xl font-bold text-primary">{doneCount}</span>
-            <span className="text-muted-foreground"> / {effectiveTotal} 차시 진행</span>
+            <span className="text-muted-foreground"> / {total} 차시 진행</span>
             {cancelCount > 0 && (
-              <span className="text-muted-foreground"> · 취소 {cancelCount} (PDF 원래 {total})</span>
+              <span className="text-muted-foreground"> · 취소(미진행) {cancelCount}</span>
             )}
           </div>
         </div>

@@ -4,12 +4,12 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 export interface TeamProgress {
   teamId: number;
   total: number;            // PDF 원래 차시 수
-  effectiveTotal: number;   // 미진행(취소) 제외한 유효 차시 수
+  effectiveTotal: number;   // = total (전체 회차 기준, 취소도 분모에 포함)
   done: number;             // 일일현황 기록 있는 차시 (실제 진행됨)
-  cancelled: number;        // 과거 일자에 기록 없음 = 미진행
+  cancelled: number;        // 과거 일자에 기록 없음 = 미진행(참고용 카운트, 분모에서 빼지 않음)
   planned: number;          // 미래 예정 차시 수
-  progressPercent: number;  // done / effectiveTotal
-  currentSession: number;   // 다음 진행할 차시(표시번호) — 끝났으면 effectiveTotal
+  progressPercent: number;  // done / total
+  currentSession: number;   // 다음 진행할 차시(표시번호) — 끝났으면 total
 }
 
 // 진행률 = 일일현황(daily_reports) 기록 기준
@@ -36,9 +36,9 @@ function computeProgress(
     else planned++;
   }
   const total = sessions.length;
-  const effectiveTotal = total - cancelled;
-  const progressPercent = effectiveTotal === 0 ? 0 : Math.round((done / effectiveTotal) * 100);
-  const currentSession = Math.min(done + 1, effectiveTotal === 0 ? 1 : effectiveTotal);
+  const effectiveTotal = total; // 전체 회차 기준 — 취소(증거없음+기한지남)도 분모에 포함
+  const progressPercent = total === 0 ? 0 : Math.round((done / total) * 100);
+  const currentSession = Math.min(done + 1, total === 0 ? 1 : total);
   return { teamId, total, effectiveTotal, done, cancelled, planned, progressPercent, currentSession };
 }
 
