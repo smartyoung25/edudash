@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ocrReceipt, isOcrEnabled } from "@/lib/integrations/ocr";
 import { classifyExpense } from "@/lib/integrations/expense-classifier";
-import { requireAuth } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,9 +10,17 @@ export const maxDuration = 60;
 const MAX_SIZE = 4 * 1024 * 1024;
 
 export async function POST(req: Request) {
-  await requireAuth();
+  // API 라우트에서는 requireAuth()의 redirect("/login")을 쓰지 않는다.
+  // fetch가 리디렉트를 따라가면 res.ok=true + HTML 본문이 되어, 세션 만료가 "OCR 실패"로 둔갑한다.
+  const session = await getSession();
+  if (!session.userId) {
+    return NextResponse.json({ error: "로그인이 만료되었습니다. 새로고침 후 다시 시도해 주세요" }, { status: 401 });
+  }
   if (!isOcrEnabled()) {
-    return NextResponse.json({ error: "OCR이 설정되지 않았습니다 (.env.local GOOGLE_VISION_KEY_PATH)" }, { status: 503 });
+    return NextResponse.json(
+      { error: "OCR이 설정되지 않았습니다 (GOOGLE_SERVICE_ACCOUNT_JSON 또는 GOOGLE_VISION_KEY_PATH 필요)" },
+      { status: 503 },
+    );
   }
 
   const form = await req.formData();
@@ -35,6 +43,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, parsed, classification });
   } catch (err: any) {
     console.error("[OCR] 실패", err);
-    return NextResponse.json({ error: err?.message || "OCR 처리 실패" }, { status: 500 });
+    return NextResponse.json({ error: err?.message || "OCR 처리 실패", code: err?.code ?? null }, { status: 500 });
   }
 }

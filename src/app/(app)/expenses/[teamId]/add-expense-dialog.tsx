@@ -20,6 +20,12 @@ export interface SessionOption {
   subject: string;
 }
 
+/** 자동입력 실패 안내 — 원인을 알면 함께 보여준다(영수증 첨부 자체는 항상 유지됨) */
+function ocrFailNote(reason?: string) {
+  const base = "자동입력은 실패했지만 영수증은 첨부됩니다. 항목을 직접 입력해 주세요.";
+  return reason ? `${base} (원인: ${reason})` : base;
+}
+
 export function AddExpenseDialog({ teamId, sessions }: { teamId: number; sessions: SessionOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -62,10 +68,12 @@ export function AddExpenseDialog({ teamId, sessions }: { teamId: number; session
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/expenses/ocr", { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // OCR 실패해도 첨부는 유지 — 사용자가 직접 입력하면 됨
-        setOcrNote("자동입력은 실패했지만 영수증은 첨부됩니다. 항목을 직접 입력해 주세요.");
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || !data.parsed) {
+        // OCR 실패해도 첨부는 유지 — 사용자가 직접 입력하면 됨.
+        // 서버가 내려준 실제 원인(결제 미설정/권한/용량/세션만료)을 그대로 보여준다.
+        console.error("[OCR] 자동입력 실패", res.status, data);
+        setOcrNote(ocrFailNote(data.error));
         return;
       }
       const p = data.parsed;
@@ -81,8 +89,9 @@ export function AddExpenseDialog({ teamId, sessions }: { teamId: number; session
       if (!category && data.classification?.category && data.classification.confidence >= 0.65) {
         setCategory(data.classification.category);
       }
-    } catch {
-      setOcrNote("자동입력은 실패했지만 영수증은 첨부됩니다. 항목을 직접 입력해 주세요.");
+    } catch (err: any) {
+      console.error("[OCR] 자동입력 실패", err);
+      setOcrNote(ocrFailNote(err?.message));
     } finally {
       setOcrLoading(false);
     }

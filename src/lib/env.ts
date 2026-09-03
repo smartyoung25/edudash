@@ -44,5 +44,6 @@ export function isMailEnabled() {
 }
 
 export function isOcrEnabled() {
-  return false;
+  // 로컬: 키파일 경로 / 운영(서버리스): 서비스계정 JSON
+  return !!process.env.GOOGLE_VISION_KEY_PATH || !!env.GOOGLE_SERVICE_ACCOUNT_JSON;
 }

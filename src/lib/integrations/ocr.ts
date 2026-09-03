@@ -8,9 +8,32 @@ import { env } from "../env";
 
 let _client: ImageAnnotatorClient | null = null;
 
-export function isOcrEnabled(): boolean {
-  // 로컬: 키파일 경로 / 운영(서버리스): 서비스계정 JSON
-  return !!process.env.GOOGLE_VISION_KEY_PATH || !!env.GOOGLE_SERVICE_ACCOUNT_JSON;
+// 설정 여부 판정은 env.ts 한 곳에만 둔다 (연동 설정 페이지와 같은 기준을 쓰기 위해)
+export { isOcrEnabled } from "../env";
+
+/**
+ * Vision(gRPC) 오류를 사용자에게 그대로 보여줄 수 있는 한국어 원인으로 변환한다.
+ * code는 gRPC status — 7 PERMISSION_DENIED / 8 RESOURCE_EXHAUSTED / 16 UNAUTHENTICATED
+ */
+function toOcrError(err: any): Error & { code?: unknown } {
+  const code = err?.code;
+  const msg = String(err?.message ?? "");
+  let text: string;
+  if (code === 7 && /billing/i.test(msg)) {
+    text = "Google Cloud 결제 계정이 연결되어 있지 않아 OCR을 사용할 수 없습니다. 관리자에게 문의해 주세요.";
+  } else if (code === 7) {
+    text = "OCR 권한이 없습니다 (Vision API 미사용 설정 또는 서비스계정 권한 부족).";
+  } else if (code === 8) {
+    text = "OCR 사용량 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.";
+  } else if (code === 16 || /invalid_grant|unauthorized|credential/i.test(msg)) {
+    text = "OCR 자격증명이 올바르지 않습니다.";
+  } else {
+    text = msg || "OCR 처리 실패";
+  }
+  const e = new Error(text) as Error & { code?: unknown; cause?: unknown };
+  e.code = code;
+  e.cause = err;
+  return e;
 }
 
 function getClient(): ImageAnnotatorClient {
@@ -31,7 +54,15 @@ function getClient(): ImageAnnotatorClient {
   // 2) 서비스계정 JSON 으로 인증 (Vercel 등 서버리스 — 파일이 배포되지 않음)
   const raw = env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (raw) {
-    const parsed = JSON.parse(raw) as { client_email: string; private_key: string; project_id?: string };
+    let parsed: { client_email?: string; private_key?: string; project_id?: string };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error("OCR 서비스계정 JSON 형식이 올바르지 않습니다 (GOOGLE_SERVICE_ACCOUNT_JSON)");
+    }
+    if (!parsed.client_email || !parsed.private_key) {
+      throw new Error("OCR 서비스계정 JSON에 client_email/private_key가 없습니다");
+    }
     _client = new ImageAnnotatorClient({
       credentials: {
         client_email: parsed.client_email,
@@ -47,6 +78,16 @@ function getClient(): ImageAnnotatorClient {
 
 /** 이미지/PDF 버퍼에서 텍스트 추출 */
 export async function extractText(buffer: Buffer, mimeType?: string): Promise<string> {
+  try {
+    return await callVision(buffer, mimeType);
+  } catch (err: any) {
+    // 자격증명 문제면 캐시된 클라이언트를 버려 다음 시도에서 다시 만들도록 한다
+    if (err?.code === 16) _client = null;
+    throw toOcrError(err);
+  }
+}
+
+async function callVision(buffer: Buffer, mimeType?: string): Promise<string> {
   const client = getClient();
 
   if (mimeType === "application/pdf") {

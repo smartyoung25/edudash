@@ -56,8 +56,9 @@ export function AddAgencyDialog({
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/expenses/ocr", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || !data.parsed) {
+        console.error("[OCR] 자동입력 실패", res.status, data);
         setError(data.error || "OCR 실패");
         return;
       }
@@ -73,6 +74,7 @@ export function AddAgencyDialog({
       if (p.cardLast4) setCardLast4(p.cardLast4);
       if (p.rawText) setOcrRawText(p.rawText);
     } catch (err: any) {
+      console.error("[OCR] 자동입력 실패", err);
       setError(err?.message || "OCR 실패");
     } finally {
       setOcrLoading(false);

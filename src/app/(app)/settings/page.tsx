@@ -20,7 +20,7 @@ export default async function SettingsPage() {
       label: "Google Sheets (일일현황 읽기)",
       icon: FileSpreadsheet,
       enabled: isSheetsEnabled(),
-      env: ["GOOGLE_SERVICE_ACCOUNT_JSON_PATH", "DAILY_SHEETS_SPREADSHEET_ID", "GOOGLE_DELEGATED_USER"],
+      env: ["GOOGLE_SERVICE_ACCOUNT_JSON", "DAILY_SHEETS_SPREADSHEET_ID", "GOOGLE_DELEGATED_USER"],
       desc: "코디네이터가 입력한 구글 스프레드시트의 새 행을 5분 간격으로 읽어옵니다.",
     },
     {
@@ -28,7 +28,7 @@ export default async function SettingsPage() {
       label: "Google Drive (영수증 업로드)",
       icon: HardDrive,
       enabled: isDriveEnabled(),
-      env: ["GOOGLE_SERVICE_ACCOUNT_JSON_PATH", "DRIVE_ROOT_FOLDER_ID"],
+      env: ["GOOGLE_SERVICE_ACCOUNT_JSON", "DRIVE_ROOT_FOLDER_ID"],
       desc: "경비영수증 원본 파일을 구글 드라이브 [팀]/경비영수증/[월] 폴더에 업로드합니다.",
     },
     {
@@ -44,7 +44,7 @@ export default async function SettingsPage() {
       label: "OCR (영수증 파싱)",
       icon: ScanText,
       enabled: isOcrEnabled(),
-      env: ["GOOGLE_VISION_KEY_PATH"],
+      env: ["GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_VISION_KEY_PATH"],
       desc: "Google Cloud Vision API로 영수증의 금액·일자·항목을 자동 추출합니다. (선택)",
     },
   ];
