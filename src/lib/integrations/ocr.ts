@@ -181,11 +181,27 @@ function parseAmount(line: string): number | null {
 }
 
 /** 다음 라인까지 보면서 숫자 잡기 — 제외 라인은 건너뜀 */
-function findAmountNear(lines: string[], idx: number, excluded: Set<number>): number | null {
+function findAmountNear(
+  lines: string[],
+  idx: number,
+  excluded: Set<number>,
+  /**
+   * 찾으려는 항목의 라벨. 세금계산서처럼 한 줄에 "공급가액 19,218  세액 1,922" 가 같이 오면
+   * 이걸 줘야 해당 라벨 뒤 숫자를 집는다. 없으면 줄의 첫 라벨 뒤 숫자를 집는다(기존 동작).
+   */
+  label?: RegExp,
+): number | null {
   const sameLine = lines[idx];
   // 같은 라인이 제외 대상이면 인접 라인만 본다
   if (!excluded.has(idx)) {
-    const afterKeyword = sameLine.replace(/.*?(공급가액|공급가|부가세과세\s*물품가액|과세\s*물품가액|과세\s*대상\s*물품가액|과세대상금액|과세\s*물품|부가\s*가치세|부가세|세액|합\s*계|총\s*액|총\s*합계|받을\s*금액|결제\s*금액|판매\s*금액|승인금액|이체금액|송금금액)\s*[:：]?/, "");
+    const GENERIC = /.*?(공급가액|공급가|부가세과세\s*물품가액|과세\s*물품가액|과세\s*대상\s*물품가액|과세대상금액|과세\s*물품|부가\s*가치세|부가세|세액|합\s*계|총\s*액|총\s*합계|받을\s*금액|결제\s*금액|판매\s*금액|승인금액|이체금액|송금금액)\s*[:：]?/;
+    let afterKeyword: string;
+    const lm = label ? sameLine.match(label) : null;
+    if (lm && lm.index !== undefined) {
+      afterKeyword = sameLine.slice(lm.index + lm[0].length).replace(/^\s*[:：]?\s*/, "");
+    } else {
+      afterKeyword = sameLine.replace(GENERIC, "");
+    }
     const m1 = afterKeyword.match(/([\d,]{3,})/);
     if (m1) {
       const n = parseInt(m1[1].replace(/,/g, ""), 10);
@@ -275,7 +291,12 @@ export function parseReceipt(text: string): ParsedReceipt {
     const line = supplierLines[i];
     // 같은 줄에 라벨+값 (안내문구 줄은 제외)
     if (!vendorName && VENDOR_LABEL_RE.test(line) && !CARDISSUER_RE.test(line) && !VENDOR_NOISE_RE.test(line)) {
-      const v = line.replace(/.*?(가맹점명?|상호|업체명?|사업장명|판매자\s*상호|판매자\s*명?|법인명)\s*[:：]?\s*/, "").trim();
+      // 세금계산서 표는 한 줄에 "상호 (주)온마켓   성명 박상훈" 처럼 여러 칸이 붙어 나온다.
+      // 뒤따르는 다른 칸 라벨(성명/대표자/등록번호/주소/업태/종목)에서 끊어 상호만 남긴다.
+      const v = line
+        .replace(/.*?(가맹점명?|상호|업체명?|사업장명|판매자\s*상호|판매자\s*명?|법인명)\s*[:：]?\s*/, "")
+        .split(/\s*(?:성\s*명|대\s*표(?:자|자명|이사)?|등\s*록\s*번\s*호|사업자\s*번호|주\s*소|업\s*태|종\s*목)\s*[:：]?/)[0]
+        .trim();
       if (v && v.length >= 2 && v.length < 40 && !/^\d/.test(v) && !/^(NH|IBK|국민|신한|삼성|현대|롯데|BC|비씨|농협)\s*카드/.test(v) && !CARDISSUER_RE.test(v) && !VENDOR_NOISE_RE.test(v)) {
         vendorName = v;
       } else if (!v || v.length < 2) {
@@ -347,6 +368,10 @@ export function parseReceipt(text: string): ParsedReceipt {
   }
 
   // 금액 — 키워드 발견 시 같은/다음 라인에서 숫자 찾기
+  // 한 줄에 여러 칸이 붙어 나오는 세금계산서 표에서 "어느 라벨 뒤 숫자인지" 구분하기 위한 라벨
+  const SUPPLY_LABEL_RE = /공\s*급\s*가(\s*액)?|부\s*가\s*세\s*과\s*세\s*물\s*품\s*가\s*액|과\s*세\s*물\s*품\s*가\s*액|과\s*세\s*대\s*상\s*(물\s*품)?\s*가?\s*액|과\s*세\s*대\s*상\s*금\s*액/;
+  const VAT_LABEL_RE = /부\s*가\s*가\s*치\s*세|부\s*가\s*세(?!\s*과)|세\s*액|VAT/i;
+
   let supplyAmount: number | null = null;
   let vatAmount: number | null = null;
   let totalAmount: number | null = null;
@@ -406,7 +431,7 @@ export function parseReceipt(text: string): ParsedReceipt {
         /과\s*세\s*대\s*상\s*금\s*액/.test(line)) &&
       !/면\s*세/.test(line)
     ) {
-      supplyAmount = findAmountNear(lines, i, excludedForAmount);
+      supplyAmount = findAmountNear(lines, i, excludedForAmount, SUPPLY_LABEL_RE);
     }
     // 부가세: "부 가 세" 같이 글자 사이 공백도 OK
     if (
@@ -414,7 +439,7 @@ export function parseReceipt(text: string): ParsedReceipt {
       (/부\s*가\s*가\s*치\s*세/.test(line) || /부\s*가\s*세(?!\s*과)/.test(line) || /세\s*액/.test(line) || /\bVAT\b/i.test(line)) &&
       !/(영\s*세\s*율|면\s*세)/.test(line)
     ) {
-      vatAmount = findAmountNear(lines, i, excludedForAmount);
+      vatAmount = findAmountNear(lines, i, excludedForAmount, VAT_LABEL_RE);
     }
     // 합계: "합 계", "받을금액", 택시 "요금" 등
     if (

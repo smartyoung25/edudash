@@ -98,6 +98,12 @@ export async function pollMailbox(opts?: {
   fromEmail?: string;
   sinceDays?: number;
   includeRead?: boolean;
+  /**
+   * mail_log 마커를 무시하고 이미 수집된 메일도 다시 처리한다 (백필용).
+   * 하위 저장은 모두 멱등 — 서류는 (source=mail, 팀, 파일명), 지출은 (messageId, 첨부명) 기준으로
+   * 중복을 막으므로, 이전 폴에서 OCR 실패로 누락된 영수증만 새로 등록된다.
+   */
+  ignoreMailLog?: boolean;
 }): Promise<MailSyncResult> {
   if (!isMailEnabled()) {
     return { ok: false, message: "Gmail 자격증명 미설정 (GOOGLE_SERVICE_ACCOUNT_JSON / GMAIL_USER)" };
@@ -110,6 +116,8 @@ export async function pollMailbox(opts?: {
   let newAttachments = 0;
   let unclassified = 0;
   let expensesCreated = 0;
+  // 영수증 정산 실패 모음 — 연동 설정 화면과 로그에 드러내기 위함(조용한 누락 방지)
+  const allReceiptFailures: string[] = [];
   let alreadyProcessed = 0;
 
   // 허용 발신자(코디·교수·앱 사용자 이메일)만 수집 — 사업 무관 메일 과수집 방지.
@@ -178,7 +186,11 @@ export async function pollMailbox(opts?: {
         .from(schema.mailLog)
         .where(eq(schema.mailLog.messageId, messageIdHeader))
         .limit(1);
-      if (existing.length > 0) {
+      const alreadyLogged = existing.length > 0;
+      // 이전 폴에서 영수증 정산이 실패해 error 로 남은 메일은 다시 처리한다(자동 재시도).
+      // 하위 저장이 모두 멱등이라 재처리해도 서류/지출이 중복되지 않는다.
+      const needsRetry = alreadyLogged && existing[0].processedStatus === "error";
+      if (alreadyLogged && !needsRetry && !opts?.ignoreMailLog) {
         alreadyProcessed++;
         // already processed in a prior run — still mark read so we stop seeing it
         if (!skipMarkRead) {
@@ -186,6 +198,9 @@ export async function pollMailbox(opts?: {
         }
         continue;
       }
+
+      // 이 메일에서 발생한 정산(영수증) 실패 — 하나라도 있으면 읽음 처리를 보류해 다음 폴에서 재시도한다
+      const receiptFailures: string[] = [];
 
       // 메시지 단위 오류 격리 — 한 메일의 첨부 다운로드/업로드 실패가 폴 전체를 중단시키지 않게.
       // 실패해도 catch에서 mailLog 마커를 남겨(=error) 무한 재수집을 막는다.
@@ -341,27 +356,50 @@ export async function pollMailbox(opts?: {
                   receivedAt, subjectSession: receiptSession, teams,
                 });
                 if (outcome.status === "created") expensesCreated++;
+                else if (outcome.status === "error") {
+                  // OCR/저장 실패 — 조용히 넘기면 영원히 누락된다(2026-08~09 43일간 0건 사고).
+                  // 실패를 기록하고 아래에서 읽음 처리를 보류해 다음 폴에서 재시도되게 한다.
+                  receiptFailures.push(`${c.name}: ${outcome.detail}`);
+                }
               }
             }
-          } catch {
-            // 정산 반영 실패해도 서류 수집 자체는 유지
+          } catch (e: any) {
+            // 서류 수집 자체는 유지하되, 정산 실패는 반드시 드러낸다
+            receiptFailures.push(`${filename}: ${e?.message || String(e)}`);
           }
         }
       }
 
-      await db.insert(schema.mailLog).values({
-        messageId: messageIdHeader,
-        fromAddress,
-        subject,
-        receivedAt,
-        classifiedTeamId: teamId,
-        classifiedDocType: attachmentSaved > 0 ? "다중" : null,
-        processedStatus: teamId ? "classified" : "unclassified",
-      });
-      newMails++;
+      const logStatus: "classified" | "unclassified" | "error" =
+        receiptFailures.length > 0 ? "error" : teamId ? "classified" : "unclassified";
+      const logError = receiptFailures.length > 0 ? receiptFailures.join(" / ").slice(0, 500) : null;
 
-      // Mark as read so subsequent polls skip it
-      if (!skipMarkRead) {
+      if (alreadyLogged) {
+        // 재처리(재시도·백필) — messageId 가 UNIQUE 라 INSERT 불가. 결과만 갱신해
+        // 성공 시 error 마커가 풀리도록 한다(안 그러면 영원히 재시도된다).
+        await db
+          .update(schema.mailLog)
+          .set({ processedStatus: logStatus, errorMessage: logError })
+          .where(eq(schema.mailLog.messageId, messageIdHeader));
+      } else {
+        await db.insert(schema.mailLog).values({
+          messageId: messageIdHeader,
+          fromAddress,
+          subject,
+          receivedAt,
+          classifiedTeamId: teamId,
+          classifiedDocType: attachmentSaved > 0 ? "다중" : null,
+          // 영수증 정산이 실패했으면 error 로 남긴다 → 위 중복 게이트가 통과시켜 다음 폴에서 재시도됨
+          processedStatus: logStatus,
+          errorMessage: logError,
+        });
+      }
+      newMails++;
+      if (receiptFailures.length > 0) allReceiptFailures.push(...receiptFailures);
+
+      // 읽음 처리 — 단, 영수증 정산이 실패했으면 보류한다.
+      // (읽음 처리하면 is:unread 쿼리에서 빠져 영원히 재시도되지 않는다)
+      if (!skipMarkRead && receiptFailures.length === 0) {
         await gmail.users.messages.modify({
           userId,
           id: ref.id,
@@ -393,7 +431,12 @@ export async function pollMailbox(opts?: {
         ? `이미 수집됨 — 해당 기간 메일 ${alreadyProcessed}건은 모두 처리 완료 (신규 0건)`
         : `${newMails}건 처리, 첨부 ${newAttachments}건, 미분류 ${unclassified}건` +
           (expensesCreated ? `, 정산반영 ${expensesCreated}건` : "") +
+          (allReceiptFailures.length ? `, ⚠영수증실패 ${allReceiptFailures.length}건(다음 폴에서 재시도)` : "") +
           (alreadyProcessed ? ` · 기수집 ${alreadyProcessed}건 제외` : "");
+
+    if (allReceiptFailures.length) {
+      console.error("[메일수집] 영수증 정산 실패", allReceiptFailures.slice(0, 20));
+    }
     return {
       ok: true,
       message,
