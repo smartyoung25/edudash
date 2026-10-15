@@ -117,3 +117,5 @@ cloudflared.exe
 .env.local.hwpx-corrupted-*
 /OT 출장 영수증_방서연/
 scripts/_*.mjs
+
+.vercel
