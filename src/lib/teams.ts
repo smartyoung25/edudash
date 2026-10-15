@@ -1,6 +1,6 @@
 // 기획서 4장: 운영 팀 현황 - 15개 팀 실제 데이터
 
-export type Product = "감귤" | "딸기" | "배" | "토마토" | "포도" | "한우";
+export type Product = "감귤" | "딸기" | "배" | "토마토" | "포도" | "한우" | "시설채소";
 
 export interface SeedTeam {
   name: string;
@@ -38,7 +38,7 @@ export const SEED_TEAMS: SeedTeam[] = [
   { name: "한우해움",       product: "한우", cohort: "7기",  courseName: "종합 경영",      region: "강원 인제",   headCount: 6,  totalSessions: 14, endDate: "2026-08-26", professorName: "김도경" },
 ];
 
-export const PRODUCTS: Product[] = ["감귤", "딸기", "배", "토마토", "포도", "한우"];
+export const PRODUCTS: Product[] = ["감귤", "딸기", "배", "토마토", "포도", "한우", "시설채소"];
 
 export const PRODUCT_COLORS: Record<Product, string> = {
   감귤: "bg-orange-100 text-orange-800 border-orange-200",
@@ -47,4 +47,5 @@ export const PRODUCT_COLORS: Record<Product, string> = {
   토마토: "bg-red-100 text-red-800 border-red-200",
   포도: "bg-purple-100 text-purple-800 border-purple-200",
   한우: "bg-amber-100 text-amber-800 border-amber-200",
+  시설채소: "bg-green-100 text-green-800 border-green-200",
 };

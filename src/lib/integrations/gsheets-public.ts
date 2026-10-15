@@ -85,12 +85,13 @@ function parseDate(val: ExcelJS.CellValue): string | null {
 }
 
 /** 시트명에서 품목 추론 */
-function inferProduct(sheetName: string): "감귤" | "딸기" | "배" | "토마토" | "포도" | "한우" {
+function inferProduct(sheetName: string): "감귤" | "딸기" | "배" | "토마토" | "포도" | "한우" | "시설채소" {
   if (sheetName.includes("딸기")) return "딸기";
   if (sheetName.includes("감귤")) return "감귤";
   if (sheetName.includes("포도")) return "포도";
   if (sheetName.includes("한우")) return "한우";
   if (sheetName.includes("토마토")) return "토마토";
+  if (sheetName.includes("시설채소")) return "시설채소";
   return "배";
 }
 

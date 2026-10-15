@@ -18,7 +18,7 @@ export const users = sqliteTable("users", {
 export const teams = sqliteTable("teams", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
-  product: text("product", { enum: ["감귤", "딸기", "배", "토마토", "포도", "한우"] }).notNull(),
+  product: text("product", { enum: ["감귤", "딸기", "배", "토마토", "포도", "한우", "시설채소"] }).notNull(),
   cohort: text("cohort").notNull(),
   courseName: text("course_name").notNull(),
   region: text("region").notNull(),

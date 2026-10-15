@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
   }
 
-  if (survey.collectTeam && parsed.data.product && !["감귤", "딸기", "배", "토마토", "포도", "한우", "기타"].includes(parsed.data.product)) {
+  if (survey.collectTeam && parsed.data.product && !["감귤", "딸기", "배", "토마토", "포도", "한우", "시설채소", "기타"].includes(parsed.data.product)) {
     return NextResponse.json({ error: "작목 값이 올바르지 않습니다." }, { status: 400 });
   }
 
